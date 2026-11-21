@@ -1513,8 +1513,8 @@ const view = { z: 1, px: 0, py: 0 };
 // the hive body around the frame, in comb units (1 unit ≈ 3 mm): the box's front wall (left) and back wall (right),
 // and under the bottom box the floor with the entrance gap and landing board. Frames hang 'cold way' (front to back).
 const HB = (() => { const FT = 1.5*ROWS+0.5 + 4.5;      // floor top: one bee space (~9 mm) below the bottom bar
-  return { WIN:-3.4, WOUT:-5.8, BWIN:S3*(COLS+0.5)+3.4, BWOUT:S3*(COLS+0.5)+5.6, FT, FB:FT+2.2, GT:FT-3.4, LB:-11,
-           EXL:12, EXR:6.2, EXT:3.6, EXB:7.4 }; })();
+  return { WIN:-3.4, WOUT:-5.8, BWIN:S3*(COLS+0.5)+3.4, BWOUT:S3*(COLS+0.5)+5.6, FT, FB:FT+3.4, GT:FT-3.4, LB:-11,
+           EXL:12, EXR:6.2, EXT:3.6, EXB:8.6 }; })();
 const COMB_W = S3*(COLS+0.5), COMB_H = 1.5*ROWS+0.5;
 let geo = { R: 5, ox: 0, oy: 0, W: 0, H: 0, dpr: 1 };
 let sideLists = null;
@@ -1571,8 +1571,12 @@ function drawHiveBody(c, ox, oy, R, box){
   grain(c, X(HB.BWIN), top, (HB.BWOUT-HB.BWIN)*R, Y(box===0?HB.FB:HB.FB+2)-top, false, base, 93, R);
   if (box!==0) return;
   // floor (bottom board) running under the whole box and out the front as the landing board
-  grain(c, X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), (HB.FB-HB.FT)*R, true, shade(base,0.92), 97, R);
-  c.fillStyle='rgba(255,235,190,.18)'; c.fillRect(X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), Math.max(1,R*0.25));
+  // option A: a solid cedar bottom board — thick plank, warm red-brown grain, worn lighter where the bees walk
+  const cedar = '#8e5a36';
+  grain(c, X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), (HB.FB-HB.FT)*R, true, cedar, 97, R);
+  c.fillStyle='rgba(255,220,170,.22)'; c.fillRect(X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), Math.max(1,R*0.28));
+  c.fillStyle='rgba(0,0,0,.35)'; c.fillRect(X(HB.LB), Y(HB.FB)-Math.max(1,R*0.3), X(HB.BWOUT)-X(HB.LB), Math.max(1,R*0.3));
+  c.fillStyle='rgba(60,30,12,.55)'; c.fillRect(X(HB.LB), Y(HB.FT), Math.max(1,R*0.35), (HB.FB-HB.FT)*R);   // end grain at the front edge
   // the entrance: the gap between the bottom of the front wall and the floor, with daylight falling in
   const g = c.createLinearGradient(X(HB.WOUT), 0, X(HB.WIN)+R*3, 0);
   g.addColorStop(0, 'rgba(210,185,130,.35)'); g.addColorStop(1, 'rgba(10,7,4,0)');
@@ -1761,6 +1765,67 @@ function stripes(ctx, kind){
   else { [[0,'#2a1a0a'],[.14,'#2a1a0a'],[.2,'#d9a03a'],[.34,'#d9a03a'],[.4,'#2f1d0b'],[.5,'#2f1d0b'],[.56,'#e0aa45'],[.72,'#e0aa45'],[.78,'#3a250f'],[.86,'#3a250f'],[.9,'#d2983a'],[1,'#d2983a']].forEach(([o,c])=>g.addColorStop(o,c)); }
   GRAD[key]=g; return g;
 }
+// side profile, for bees on the floor and landing board and in flight past the hive (the comb view is a side view
+// of the hive, so bees on the floor are seen side-on while bees on the comb face are seen from above).
+// Origin: middle of the body; feet reach y = +BEE_SIDE_H body units. Facing +x; dir = -1 mirrors.
+const BEE_SIDE_H = 1.0;
+function drawBeeSide(ctx, x, y, dir, s, kind, opt){
+  ctx.save(); ctx.translate(x,y); ctx.scale(s*dir, s); ctx.rotate(-(opt.pitch||0)*dir*dir);
+  const Q = kind==='q', Dr = kind==='d', fly = opt.fly, detail = s > 3.2, ph = (opt.step||0)*9;
+  const ink = '#24170b';
+  // legs: three on the near side (the far three are hidden behind the body), stepping in a tripod gait
+  if (detail || !fly){
+    ctx.strokeStyle = ink; ctx.lineWidth = 0.11; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
+    const hips = [[0.62, 0.18], [0.3, 0.3], [-0.02, 0.28]];
+    hips.forEach(([hx, hy], k) => {
+      if (fly){ ctx.moveTo(hx, hy); ctx.lineTo(hx - 0.25, hy + 0.45); ctx.lineTo(hx - 0.55 - k*0.1, hy + 0.65); return; }   // legs trail in flight
+      const sw = Math.sin(ph + (k % 2) * Math.PI) * 0.22, lift = Math.max(0, Math.cos(ph + (k % 2) * Math.PI)) * 0.12;
+      const fx = hx + (k===0 ? 0.35 : k===1 ? 0.05 : -0.45) + sw;
+      ctx.moveTo(hx, hy); ctx.lineTo((hx + fx) / 2 + (k===2 ? -0.15 : 0.1), hy + 0.38); ctx.lineTo(fx, BEE_SIDE_H - lift);
+    });
+    ctx.stroke();
+  }
+  // abdomen (banded), slightly drooping toward the tail
+  const ax = Q ? -1.5 : -1.05, arx = Q ? 1.6 : Dr ? 1.3 : 1.15, ary = Dr ? 0.72 : 0.58;
+  ctx.fillStyle = stripes(ctx, kind);
+  ctx.beginPath(); ctx.ellipse(ax, 0.06, arx, ary, 0.1, 0, 7); ctx.fill();
+  if (detail){ ctx.fillStyle = 'rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax + 0.1, -ary*0.45, arx*0.75, ary*0.28, 0.1, 0, 7); ctx.fill(); }
+  if (opt.pollen){   // pollen load on the hind leg
+    const pr = 0.34 * (opt.load ?? 1);
+    ctx.fillStyle = opt.pollen; ctx.beginPath(); ctx.ellipse(-0.42, 0.62, pr*1.1, pr*0.85, -0.3, 0, 7); ctx.fill();
+    if (detail){ ctx.fillStyle = 'rgba(255,255,235,.4)'; ctx.beginPath(); ctx.ellipse(-0.5, 0.52, pr*0.45, pr*0.25, -0.3, 0, 7); ctx.fill(); }
+  }
+  // thorax, fuzzy
+  ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c'; ctx.beginPath(); ctx.ellipse(0.32, -0.04, 0.6, 0.52, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3, -0.12, 0.48, 0.38, 0, 0, 7); ctx.fill();
+  // head, tilted down, with the compound eye and a mouthpart
+  ctx.fillStyle = '#2e1f10'; ctx.beginPath(); ctx.ellipse(1.06, 0.12, 0.3, 0.4, -0.35, 0, 7); ctx.fill();
+  ctx.fillStyle = '#120d08'; ctx.beginPath(); ctx.ellipse(1.04, 0.02, Dr ? 0.26 : 0.16, Dr ? 0.3 : 0.26, -0.35, 0, 7); ctx.fill();
+  if (detail){
+    ctx.strokeStyle = ink; ctx.lineWidth = 0.08; ctx.beginPath();
+    ctx.moveTo(1.18, -0.2); ctx.quadraticCurveTo(1.45, -0.55, 1.75, -0.38);   // antenna (elbowed)
+    ctx.moveTo(1.2, 0.45); ctx.lineTo(1.28, 0.62); ctx.stroke();               // mandibles / tongue
+  }
+  if (opt.dust > 0.02 && detail){
+    ctx.fillStyle = mixC(opt.dustCol || opt.pollen || '#f0c030', '#fff4c0', 0.25);
+    const seed = opt.seed|0, n = Math.round(45*opt.dust);
+    for (let q=0;q<n;q++){ const u=hsh(seed+q*3), v=hsh(seed+q*7);
+      const px = u < 0.6 ? -2.0 + u/0.6*2.2 : 0.0 + (u-0.6)/0.4*0.8, py = (v-0.5)*0.9;
+      ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(px, py, 0.06, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+  // wings: folded back along the top of the abdomen, or raised and blurred in flight
+  const wl = Q ? 1.0 : Dr ? 1.5 : 1.2;
+  ctx.fillStyle = fly ? 'rgba(240,246,255,.30)' : 'rgba(225,234,250,.4)'; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 0.05;
+  if (fly){
+    const flap = Math.sin(performance.now()/1000*90) * 0.25;
+    for (const [rot, k] of [[-1.05 + flap, 1], [-0.6 - flap, 0.8]]){ ctx.beginPath(); ctx.ellipse(0.2 + Math.cos(rot)*wl*0.85, -0.35 + Math.sin(rot)*wl*0.85, wl*k, 0.42, rot, 0, 7); ctx.fill(); if (detail) ctx.stroke(); }
+  } else {
+    ctx.beginPath(); ctx.ellipse(-0.55, -0.5, wl, 0.22, 0.08, 0, 7); ctx.fill(); if (detail) ctx.stroke();
+  }
+  if (opt.role){ ctx.fillStyle = opt.role; ctx.beginPath(); ctx.arc(0.32, -0.1, 0.26, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
 function drawBee(ctx, x, y, ang, s, kind, opt){
   ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.scale(s,s);
   if (opt.foreshort) ctx.scale(0.86,1);
@@ -1886,8 +1951,8 @@ function enteringSprite(kind){
 function leave(b){
   if (b.claim!=null){ bees.claimed.delete(b.claim); b.claim=null; }
   if (b.forager && sel.box===0){   // back down to the floor, out through the entrance, and off from the landing board
-    const fy = HB.FT - 0.8 - Math.random()*1.3, xb = Math.max(1.5, Math.min(COMB_W*0.5, b.x));
-    b.path = [ [xb, fy], [HB.WIN+0.8, fy], [HB.LB+2+Math.random()*2, fy], [HB.LB-22, fy-14-Math.random()*10, 26, true] ];
+    const fy = HB.FT - BEE_SIDE_H, xb = Math.max(1.5, Math.min(COMB_W*0.5, b.x));
+    b.path = [ [xb, fy, 0, false, true], [HB.WIN+0.8, fy, 0, false, true], [HB.LB+2+Math.random()*2, fy, 0, false, true], [HB.LB-4, fy-4, 9, true, true], [HB.LB-24, fy-14-Math.random()*10, 24, true, true] ];
     b.gone=true; b.tx=xb; b.ty=COMB_H-1.2; b.mode='walk'; b.next='exit'; b.cell=null; return;
   }
   // walk to the nearest edge, then leave this face
@@ -1950,10 +2015,12 @@ function returningForager(){
     b.tx = Math.max(2, Math.min(COMB_W-2, b.x + (Math.random()-0.5)*12)); b.ty = COMB_H - 3 - Math.random()*8; b.cell=null; b.next='seek'; b.unload=true; b.nectar=true; b.waited=0;
   }
   // she flies in, lands on the landing board, walks in through the entrance gap, along the floor and up onto the comb
-  const fy = HB.FT - 0.8 - Math.random()*1.3, xin = b.x;
-  b.path = [ [HB.LB+2+Math.random()*2.5, fy, 7, false], [HB.WIN+0.8, fy], [xin, fy], [xin, COMB_H-1.2], [b.tx, b.ty] ];
-  b.x = HB.LB - 22; b.y = fy - 14 - Math.random()*10; b.spd = 26; b.buzz = true;
-  const first = b.path.shift(); b.tx = first[0]; b.ty = first[1]; b.spd = first[2]; b.buzz = true;
+  // seen from the side here: she flies in, touches down on the landing board and walks in along the floor (side profile),
+  // then turns up the frame onto the comb face (seen from above again)
+  const fy = HB.FT - BEE_SIDE_H, xin = b.x;
+  b.path = [ [HB.LB+1.5+Math.random()*2.5, fy, 6, true, true], [HB.WIN+0.8, fy, 0, false, true], [xin, fy, 0, false, true], [xin, COMB_H-1.2], [b.tx, b.ty] ];
+  b.x = HB.LB - 22; b.y = fy - 12 - Math.random()*10;
+  b.tx = HB.LB + 2 + Math.random()*3; b.ty = fy - 3 - Math.random()*2; b.spd = 24; b.buzz = true; b.side = true;   // approach, then the touch-down leg
   b.a = Math.atan2(b.ty-b.y, b.tx-b.x); b.mode='walk';
   return b;
 }
@@ -2094,8 +2161,8 @@ function stepHandover(b, dt){
 function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
   const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
-  const arrive = () => { if (b.path && b.path.length){ const p=b.path.shift(); b.tx=p[0]; b.ty=p[1]; b.spd=p[2]||0; b.buzz=!!p[3]; return; }
-    b.spd=0; b.buzz=false; b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
+  const arrive = () => { if (b.path && b.path.length){ const p=b.path.shift(); b.tx=p[0]; b.ty=p[1]; b.spd=p[2]||0; b.buzz=!!p[3]; b.side=!!p[4]; return; }
+    b.spd=0; b.buzz=false; b.side=false; b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
   if (d < 0.4){ arrive(); return; }
   const want = Math.atan2(dy,dx);
   if (d < 1.6){   // last step: walk straight onto the spot (no orbiting around it)
@@ -2227,6 +2294,7 @@ function drawComb(){
         const left = e.at - (hive.t+simAcc); if (left < 0.12){ cx.fillStyle='rgba(40,25,10,.7)'; cx.beginPath(); cx.arc(x,y,rr*0.55*(1-left/0.12),0,7); cx.fill(); } } } }   // chewing through the cap
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
+    if (b.side){ const dx=b.tx-b.x, dy=b.ty-b.y; drawBeeSide(cx, x, y, dx>=0?1:-1, sc, b.kind, { fly:b.buzz, pitch: b.buzz ? Math.max(-0.5, Math.min(0.5, Math.atan2(dy, Math.abs(dx)+1e-6))) : 0, step:b.wob, pollen:b.pollen, load:b.load, dust:b.dust||0, dustCol:b.dustCol, seed:b.seed, role: role ? ROLE_COL[b.role] : null }); continue; }
     drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
