@@ -39,6 +39,12 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--amber)
 .kv{display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px dotted #33271a}
 .kv b{font-weight:600;font-variant-numeric:tabular-nums;color:#fff}
 .sub{color:var(--dim);font-size:11.5px}
+/* fixed-height text slots so changing messages never push the panels below up or down */
+.fix2{height:2.7em;line-height:1.35em;overflow:hidden}
+.grid .kv span,.grid .kv b{white-space:nowrap}
+.kv.one b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#frameLabel{display:block;height:2.7em;line-height:1.35em;overflow:hidden}
+.bar.empty span{color:#5a4a35}
 .bars{margin-top:6px}
 .bar{display:grid;grid-template-columns:118px 1fr 52px;align-items:center;gap:6px;font-size:12px;margin:2px 0}
 .bar div{height:9px;background:#33271a;border-radius:4px;overflow:hidden}.bar div i{display:block;height:100%}
@@ -76,12 +82,12 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line);b
     <div class="panel">
       <div class="ph"><h2>Entrance</h2><span id="entSub">close-up of the landing board</span></div>
       <canvas id="ent"></canvas>
-      <div id="entInfo" class="sub" style="margin-top:4px"></div>
+      <div id="entInfo" class="sub fix2" style="margin-top:4px"></div>
     </div>
     <div class="panel">
       <div class="ph"><h2>Outside</h2><span id="landSub">foraging range · rings every 1 km</span></div>
       <canvas id="land"></canvas>
-      <div id="landInfo" class="sub" style="margin-top:4px"></div>
+      <div id="landInfo" class="sub fix2" style="margin-top:4px"></div>
     </div>
     <div class="panel" id="stats"></div>
     <div class="panel"><div class="ph"><h2>Colony over time</h2><span>last 12 months</span></div><canvas id="chart"></canvas></div>
@@ -103,6 +109,7 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line);b
       </div>
     </div>
     <div class="panel"><div class="ph"><h2>Colony events</h2></div><div id="log"></div></div>
+    <div class="panel" id="swarmPanel" style="display:none"><div id="swarmInfo"></div></div>
     <div class="panel">
       <details><summary>What's being simulated</summary>
       <ul>
@@ -2563,7 +2570,7 @@ function updateStats(){
   else if (!q.laying) qs = `<span class="warn">Mated, not yet laying</span>`;
   else qs = `<span class="good">Mated & laying</span> · ${fmt(hive.queenLayRate())} eggs/day · ${(q.ageD/365).toFixed(1)} yr`;
   const clustered = hive.Tout<14;
-  const nestT = brood>200 ? '34.5 °C (brood nest)' : clustered ? '~21 °C core (cluster)' : '~32 °C';
+  const nestT = brood>200 ? '34.5 °C brood' : clustered ? '~21 °C cluster' : '~32 °C';
   const maxR = Math.max(r.cleaners,r.nurses,r.storers,r.guards,r.foragers,1);
   let dances = []; for(let p=0;p<hive.patches.length;p++){ const v=hive.danceN[p]+hive.danceP[p]; if(v>0) dances.push([v,p]); } dances.sort((a,b)=>b[0]-a[0]);
   const dTot = dances.reduce((a,b)=>a+b[0],0);
@@ -2576,14 +2583,16 @@ function updateStats(){
     <div class="kv"><span>Honey (capped)</span><b>${honey.toFixed(1)} kg</b></div><div class="kv"><span>Unripe nectar</span><b>${nect.toFixed(1)} kg</b></div>
     <div class="kv"><span>Bee bread</span><b>${(pol*1000).toFixed(0)} g</b></div><div class="kv"><span>Hive temp</span><b>${nestT}</b></div>
   </div>
-  <div class="kv" style="margin-top:4px"><span>Queen</span><b style="font-weight:500">${qs}</b></div>
-  ${hive.swarmPrep?`<div class="kv"><span class="swarm">Swarm preparations</span><b>${hive.queenCells.length} queen cells</b></div>`:''}
+  <div class="kv one" style="margin-top:4px"><span>Queen</span><b style="font-weight:500" title="${String(qs).replace(/<[^>]+>/g,'')}">${qs}</b></div>
   ${(()=>{ const qcs=hive.queenCells, n=t=>qcs.filter(q=>qcStateOf(q)===t).length; const live=qcs.length-n('killed')-n('emerged');
-     if (!qcs.length && !hive.virgins.length) return '';
-     return `<div class="kv"><span>Queen cells</span><b style="font-weight:500">${live} developing${n('held')?` (${n('held')} held)`:''}${n('emerged')?` · ${n('emerged')} emerged`:''}${n('killed')?` · ${n('killed')} destroyed`:''}</b></div>`
-       + (hive.virgins.length?`<div class="kv"><span>Supersedure</span><b style="font-weight:500">daughter virgin coexisting with the old queen</b></div>`:'')
-       + (hive.castMode?`<div class="kv"><span class="swarm">Afterswarm mode</span><b style="font-weight:500">workers guarding queen cells</b></div>`:'')
-       + (hive.piping&&hive.piping.toot?`<div class="kv"><span>Piping</span><b style="font-weight:500">tooting & quacking</b></div>`:''); })()}
+     const parts=[];
+     if (hive.swarmPrep) parts.push('<span class="swarm">swarm preparations</span>');
+     if (qcs.length) parts.push(`${live} developing${n('held')?` (${n('held')} held)`:''}${n('emerged')?` · ${n('emerged')} emerged`:''}${n('killed')?` · ${n('killed')} destroyed`:''}`);
+     if (hive.virgins.length) parts.push('daughter virgin coexisting with the old queen (supersedure)');
+     if (hive.castMode) parts.push('<span class="swarm">afterswarm mode — workers guard the cells</span>');
+     if (hive.piping&&hive.piping.toot) parts.push('piping (tooting & quacking)');
+     const txt = parts.length ? parts.join(' · ') : '<span class="sub">none</span>';
+     return `<div class="kv one"><span>Queen cells</span><b style="font-weight:500" title="${txt.replace(/<[^>]+>/g,'')}">${txt}</b></div>`; })()}
   <div class="bars">
     ${bar('Cleaners (0–2 d)', r.cleaners, maxR, ROLE_COL.cleaner)}
     ${bar('Nurses (3–11 d)', r.nurses, maxR, ROLE_COL.nurse)}
@@ -2591,23 +2600,27 @@ function updateStats(){
     ${bar('Guards & fanners', r.guards, maxR, ROLE_COL.guard)}
     ${bar('Foragers', r.foragers, maxR, ROLE_COL.forager)}
   </div>
-  <div class="sub" style="margin-top:3px">Foraging starts at age ≈ ${hive.onset.toFixed(0)} d · larvae fed ${(hive.fedFrac*100).toFixed(0)}% · ${hive.unloadDelay>4?`<span class="warn">foragers wait ${hive.unloadDelay.toFixed(0)} min to unload (tremble dancing)</span>`:'unloading quickly'}</div>
+  <div class="sub fix2" style="margin-top:3px">Foraging starts at age ≈ ${hive.onset.toFixed(0)} d · larvae fed ${(hive.fedFrac*100).toFixed(0)}% · ${hive.unloadDelay>4?`<span class="warn">foragers wait ${hive.unloadDelay.toFixed(0)} min to unload (tremble dancing)</span>`:'unloading quickly'}</div>
   <div class="ph" style="margin-top:8px"><h2>Yesterday</h2></div>
   <div class="grid">
     <div class="kv"><span>Nectar in</span><b>${(L.nectarIn||0).toFixed(2)} kg</b></div><div class="kv"><span>Pollen in</span><b>${fmt(L.pollenIn||0)} g</b></div>
     <div class="kv"><span>Foraging trips</span><b>${fmt(L.trips||0)}</b></div><div class="kv"><span>Eggs laid</span><b>${fmt(L.laid||0)}</b></div>
     <div class="kv"><span>Bees emerged</span><b>${fmt(L.emerged||0)}</b></div><div class="kv"><span>Adult deaths</span><b>${fmt(L.deaths||0)}</b></div>
   </div>
-  ${(()=>{ const act=hive.swarms.filter(sw=>sw.phase!=='settled'&&sw.phase!=='failed'||hive.t-sw.t0<24*20); if(!act.length) return '';
-    return `<div class="ph" style="margin-top:8px"><h2>Swarms</h2></div>` + act.map(sw=>{
+
+  <div class="ph" style="margin-top:8px"><h2>Dance floor now</h2></div>${[0,1,2,3].map(k=>{ const d=dances[k];
+    if (!d) return `<div class="bar empty"><span>${k===0&&dTot<=0?'no dances':'—'}</span><div></div><b></b></div>`;
+    const [v,p]=d, P=hive.patches[p]; return bar(P.name.length>17?P.name.slice(0,16)+'…':P.name, v, dances[0][0], P.col, (v/dTot*100).toFixed(0)+'%'); }).join('')}`;
+  $('swarmInfo').innerHTML = (()=>{ const act=hive.swarms.filter(sw=>sw.phase!=='settled'&&sw.phase!=='failed'||hive.t-sw.t0<24*20); if(!act.length) return '';
+    return `<div class="ph" style="margin-top:8px"><h2>Swarms</h2><span class="sub">clustered swarms and where they went</span></div>` + act.map(sw=>{
       const head = `#${sw.id} ${sw.kind==='prime'?'prime swarm':'afterswarm'} · ${fmt(sw.n)} bees · ${sw.queen}`;
       if (sw.phase==='settled'){ const S=hive.nestSites[sw.site]; return `<div class="sub">${head}<br>→ <span class="good">settled</span> in ${S.name.toLowerCase()} ${S.dist.toFixed(1)} km ${compass(S.az)} (${S.vol.toFixed(0)} L)</div>`; }
       if (sw.phase==='failed') return `<div class="sub">${head}<br>→ <span class="bad">failed to choose a home</span></div>`;
       if (sw.phase!=='bivouac') return `<div class="sub">${head}<br>→ <span class="swarm">${sw.phase==='liftoff'?'quorum reached — lifting off':'flying to its new home'}</span></div>`;
       const sup=Object.entries(sw.support||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
       return `<div class="sub">${head}<br>Clustered on a branch for ${sw.hours} h · ~${fmt(sw.scouts)} scouts · quorum ≈ ${sw.quorumN} at one site</div>` + sup.map(([id,v])=>{ const S=hive.nestSites[id]; return bar(`${S.name.length>14?S.name.slice(0,13)+'…':S.name} ${S.dist.toFixed(1)}km`, v, sw.quorumN, '#ffd23a', v.toFixed(0)); }).join('');
-    }).join(''); })()}
-  ${dTot>0?`<div class="ph" style="margin-top:8px"><h2>Dance floor now</h2></div>${dances.slice(0,4).map(([v,p])=>{const P=hive.patches[p];return bar(P.name.length>17?P.name.slice(0,16)+'…':P.name, v, dances[0][0], P.col, (v/dTot*100).toFixed(0)+'%');}).join('')}`:''}`;
+    }).join(''); })();
+  $('swarmPanel').style.display = $('swarmInfo').innerHTML ? '' : 'none';
 }
 
 // ======================================================= chart
