@@ -1192,7 +1192,7 @@ function pickRole(){
 }
 function newSprite(kind){
   const [x,y] = bees.cellPos((Math.random()*CPS)|0);
-  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null };
+  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null, alpha:0 };
 }
 function clusterCenter(){
   const L = sideLists && sideLists.brood.length ? sideLists.brood : null;
@@ -1225,11 +1225,13 @@ function updateBees(dt){
   bees.scale = totalWant > MAXS ? totalWant/MAXS : 1;
   const nW = Math.round(want.w / bees.scale), nD = Math.round(want.d / bees.scale);
   // sync counts gradually
-  let cw=0, cd=0; for (const b of bees.list){ if(b.kind==='w') cw++; else if (b.kind==='d') cd++; }
+  let cw=0, cd=0; for (const b of bees.list){ if (b.gone) continue; if(b.kind==='w') cw++; else if (b.kind==='d') cd++; }
   for (let k=0;k<Math.min(8, nW-cw);k++) bees.list.push(newSprite('w'));
   for (let k=0;k<Math.min(3, nD-cd);k++) bees.list.push(newSprite('d'));
-  if (cw > nW + 2){ const idx = bees.list.findIndex(b=>b.kind==='w' && b.mode!=='dance' && b.mode!=='follow' && b.mode!=='retinue'); if (idx>=0) bees.list.splice(idx,1); }
-  if (cd > nD){ const idx = bees.list.findIndex(b=>b.kind==='d'); if (idx>=0) bees.list.splice(idx,1); }
+  if (cw > nW + 2){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) z.gone = true; }
+  if (cd > nD){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z) z.gone = true; }
+  for (const b of bees.list){ if (b.gone) b.alpha -= dt*1.5; else if (b.alpha<1) b.alpha = Math.min(1, (b.alpha??1) + dt*1.5); }
+  bees.list = bees.list.filter(b=>!(b.gone && b.alpha<=0));
   // role refresh slowly
   if (Math.random()<0.02 && bees.list.length){ const b=bees.list[(Math.random()*bees.list.length)|0]; if(b.kind==='w'&&b.mode!=='dance'&&b.mode!=='follow'&&b.mode!=='retinue') b.role=pickRole(); }
   // queen
@@ -1240,7 +1242,7 @@ function updateBees(dt){
   if (bees.queen){
     const q = bees.queen;
     const ret = bees.list.filter(b=>b.mode==='retinue');
-    if (!hive.queen.virgin && ret.length < 8){ const c = bees.list.find(b=>b.kind==='w' && b.mode!=='dance' && b.mode!=='follow' && b.mode!=='retinue'); if (c){ c.mode='retinue'; c.slot = Math.random()*6.28; } }
+    if (!hive.queen.virgin && ret.length < 8 && Math.random()<dt*2){ const c = nearestFree(q.x, q.y, 14); if (c){ c.mode='retinue'; c.slot = Math.random()*6.28; } }
     moveBee(q, dt, 2.2);
     if (q.mode==='idle'){ q.t-=dt; if (q.t<=0){ const k = bees.randCell(sideLists.empty.length? sideLists.empty : sideLists.brood); if (k>=0){ const p=bees.cellPos(k); const near = Math.hypot(p[0]-q.x,p[1]-q.y) < 25 || Math.random()<0.2; if(near){ q.tx=p[0]; q.ty=p[1]; q.mode='walk'; q.next='lay'; } } q.t = 0.5; } }
     else if (q.mode==='lay'){ q.t-=dt; if (q.t<=0){ q.mode='idle'; q.t = 1+Math.random()*3; } }
@@ -1248,6 +1250,21 @@ function updateBees(dt){
   // dances (only on the lower part of brood-box frames near the entrance)
   updateDances(dt, side);
   for (const b of bees.list) stepBee(b, dt);
+}
+function approach(b, tx, ty, dt, speed){
+  const dx=tx-b.x, dy=ty-b.y, d=Math.hypot(dx,dy);
+  if (d>0.02){ const s=Math.min(d, speed*dt); b.x+=dx/d*s; b.y+=dy/d*s; }
+  return d;
+}
+function turnTo(b, ang, rate, dt){
+  let da=ang-b.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+  b.a += Math.max(-rate*dt, Math.min(rate*dt, da));
+}
+const isFree = z => z.kind==='w' && !z.gone && (z.mode==='rest'||z.mode==='idle'||z.mode==='walk');
+function nearestFree(x, y, maxD, exclude){
+  let best=null, bd=maxD;
+  for (const z of bees.list){ if (!isFree(z) || z===exclude) continue; const d=Math.hypot(z.x-x,z.y-y); if (d<bd){bd=d;best=z;} }
+  return best;
 }
 function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
@@ -1262,9 +1279,10 @@ function moveBee(b, dt, speed){
 function stepBee(b, dt){
   b.wob += dt;
   if (b.mode==='retinue' && bees.queen){
-    const q=bees.queen; const a = b.slot; b.tx=q.x+Math.cos(a)*2.9; b.ty=q.y+Math.sin(a)*2.4;
-    const dx=b.tx-b.x, dy=b.ty-b.y; b.x+=dx*Math.min(1,dt*3); b.y+=dy*Math.min(1,dt*3);
-    b.a = Math.atan2(q.y-b.y,q.x-b.x); if (Math.random()<0.002) { b.mode='idle'; b.t=0; }
+    const q=bees.queen; const a = b.slot; const tx=q.x+Math.cos(a)*2.9, ty=q.y+Math.sin(a)*2.4;
+    const far = approach(b, tx, ty, dt, 4.5);
+    turnTo(b, far>1 ? Math.atan2(ty-b.y,tx-b.x) : Math.atan2(q.y-b.y,q.x-b.x), 8, dt);
+    if (Math.random()<0.002) { b.mode='idle'; b.t=0; }
     return;
   }
   if (b.mode==='dance' || b.mode==='follow') return;
@@ -1285,29 +1303,47 @@ function updateDances(dt, side){
     let x = Math.random()*tot, p=0, pol=false;
     for (; p<NP; p++){ x-=hive.danceN[p]; if (x<=0) break; x-=hive.danceP[p]; if (x<=0){pol=true;break;} }
     p = Math.min(p, NP-1);
-    const b = bees.list.find(z=>z.kind==='w' && (z.mode==='rest'||z.mode==='idle'));
+    // pick a spot on the dance floor (lower comb near the entrance) away from other dances
+    let fx=0, fy=0, ok=false;
+    for (let tries=0; tries<8 && !ok; tries++){
+      fx = 10+Math.random()*(COMB_W-20); fy = COMB_H*0.58+Math.random()*COMB_H*0.32;
+      ok = bees.dancers.every(o=>Math.hypot(o.cx-fx,o.cy-fy)>14);
+    }
+    const b = ok ? nearestFree(fx, fy, 30) : null;
     if (b){
       const P = hive.patches[p];
       b.mode='dance'; b.role='forager'; b.pollen = pol ? P.col : null;
-      const d = { bee:b, patch:p, pol, cx: 12+Math.random()*(COMB_W-24), cy: COMB_H*0.55+Math.random()*COMB_H*0.35, phase:'run', t:0, circ: 0,
+      // the dance is centred just ahead of where the forager already is; she walks onto it
+      const cx0 = Math.max(6, Math.min(COMB_W-6, b.x)), cy0 = Math.max(COMB_H*0.5, Math.min(COMB_H-5, b.y));
+      const d = { bee:b, patch:p, pol, cx: cx0, cy: cy0, phase:'approach', t:0, circ: 0, theta: (P.az - hive.sunAz)*Math.PI/180,
         left: 6 + Math.random()*12, dir:1, followers:[] };
       bees.dancers.push(d);
-      for (let k=0;k<3+(Math.random()*3|0);k++){ const f = bees.list.find(z=>z.kind==='w' && (z.mode==='rest'||z.mode==='idle'||z.mode==='walk') && z!==b); if (f){ f.mode='follow'; d.followers.push(f); } }
+      const nf = 3+(Math.random()*3|0);
+      for (let k=0;k<nf;k++){ const f = nearestFree(cx0, cy0, 16, b); if (f){ f.mode='follow'; d.followers.push(f); } }
     }
   }
   for (const d of bees.dancers){
     const P = hive.patches[d.patch], b = d.bee;
-    const theta = ((P.az - hive.sunAz) * Math.PI/180);         // angle from vertical (up = toward sun)
+    // angle from vertical (up = toward the sun); tracks the moving sun gradually
+    const target = (P.az - hive.sunAz) * Math.PI/180;
+    let dth = target - d.theta; while(dth>Math.PI)dth-=2*Math.PI; while(dth<-Math.PI)dth+=2*Math.PI;
+    d.theta += Math.max(-0.6*dt, Math.min(0.6*dt, dth));
+    const theta = d.theta;
     const ux = Math.sin(theta), uy = -Math.cos(theta);
     const round = P.dist < 0.15;
     const runDur = round ? 0.25 : 0.45 + P.dist*0.9;               // waggle-run duration ≈ distance
     const runLen = round ? 0.6 : 2 + P.dist*2.4;
     d.t += dt;
-    if (d.phase==='run'){
+    if (d.phase==='approach'){
+      const sx = d.cx - ux*runLen/2, sy = d.cy - uy*runLen/2;
+      const dist = approach(b, sx, sy, dt, 5);
+      turnTo(b, dist>0.6 ? Math.atan2(sy-b.y+1e-6, sx-b.x) : Math.atan2(uy,ux), 9, dt);
+      if (dist < 0.15 || d.t > 6){ b.x=sx; b.y=sy; d.phase='run'; d.t=0; }
+    } else if (d.phase==='run'){
       const f = Math.min(1, d.t/runDur);
       const wag = Math.sin(d.t*2*Math.PI*7)*0.32;
       b.x = d.cx + ux*(f-0.5)*runLen - uy*wag; b.y = d.cy + uy*(f-0.5)*runLen + ux*wag;
-      b.a = Math.atan2(uy,ux) + wag*0.9; b.buzz = true;
+      turnTo(b, Math.atan2(uy,ux) + wag*0.9, 30, dt); b.buzz = true;
       if (f>=1){ d.phase='ret'; d.t=0; d.dir*=-1; }
     } else {
       const retDur = round ? 0.9 : 1.1 + P.dist*0.15, f = Math.min(1, d.t/retDur);
@@ -1316,16 +1352,16 @@ function updateDances(dt, side){
       b.x = d.cx + ux*(runLen/2)*co + px*si*rad;
       b.y = d.cy + uy*(runLen/2)*co + py*si*rad;
       const vx = -ux*(runLen/2)*si + px*co*rad, vy = -uy*(runLen/2)*si + py*co*rad;
-      b.a = Math.atan2(vy, vx); b.buzz=false;
+      turnTo(b, Math.atan2(vy, vx), 14, dt); b.buzz=false;
       if (f>=1){ d.phase='run'; d.t=0; d.circ++; }
     }
     d.followers.forEach((fb,k)=>{
       const sa = (k/d.followers.length)*Math.PI*1.4 + Math.PI*0.8;
       const tx = d.cx - ux*(runLen*0.2) + Math.cos(sa + Math.atan2(uy,ux))*2.6, ty = d.cy - uy*(runLen*0.2) + Math.sin(sa + Math.atan2(uy,ux))*2.6;
-      fb.x += (tx-fb.x)*Math.min(1,dt*2); fb.y += (ty-fb.y)*Math.min(1,dt*2);
-      fb.a = Math.atan2(b.y-fb.y, b.x-fb.x);
+      const far = approach(fb, tx, ty, dt, 4.5);
+      turnTo(fb, far>1 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(b.y-fb.y, b.x-fb.x), 7, dt);
     });
-    d.left -= dt;
+    if (d.phase!=='approach') d.left -= dt;
     if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
   }
 }
@@ -1339,7 +1375,9 @@ function drawComb(){
   const role = colorRoles;
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
+    cx.globalAlpha = Math.max(0, Math.min(1, b.alpha ?? 1));
     drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, role: role ? ROLE_COL[b.role] : null });
+    cx.globalAlpha = 1;
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
