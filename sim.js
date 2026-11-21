@@ -160,6 +160,12 @@ class Hive {
     if (type === 0) this.nWorkers++; else this.nDrones++;
     return i;
   }
+  // a bee that dies inside the hive leaves a body: in flying weather undertakers carry it out and fly it away; otherwise
+  // it drops to the bottom board, where the dead pile up through the winter until a warm day's clean-out
+  bodyDrop(i) {
+    if (this.fstate[i] === 1) return;                      // died out in the field
+    if (this.canFly) this.undertakeN++; else this.deadOnFloor++;
+  }
   killBee(i) {
     if (!this.alive[i]) return;
     if (this.fstate[i] === 1) this.unflight(i);
@@ -222,7 +228,7 @@ class Hive {
     this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
     this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
-    this.idleDays = 0; this.evictN = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.idleDays = 0; this.evictN = 0; this.undertakeN = 0; this.deadOnFloor = 0; this.deadOutside = 0; this.dumpN = 0; this.flyOffN = 0; this.corpseRate = { under: 0, dump: 0, fly: 0 }; this._corpse0 = [0, 0, 0]; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
     this.history = []; this.resetDay();
@@ -488,7 +494,7 @@ class Hive {
           // ageing in the hive depends on workload (brood to feed), not on job title: older bees sitting in a broodless
           // winter cluster age as slowly as any other bee; flights add their own wear on top (see startTrip)
           this.wear[i] += this.frail[i] * (a < onset ? houseWear : 0.0025 / 24);   // only bees still doing house work carry the nursing load
-          if (this.wear[i] >= 1 || R() < baseDeath) { this.killBee(i); continue; }
+          if (this.wear[i] >= 1 || R() < baseDeath) { this.bodyDrop(i); this.killBee(i); continue; }
         }
         if (a < onset) {
           const r = a / onset;
@@ -499,7 +505,7 @@ class Hive {
         if (!initial) {
           this.wear[i] += 1 / 40 / 24;
           if (evict && R() < 0.012) { this.killBee(i); this.evictN++; continue; }   // dragged out of the hive by workers
-          if (this.wear[i] >= 1 || R() < 0.0004) { this.killBee(i); continue; }
+          if (this.wear[i] >= 1 || R() < 0.0004) { this.bodyDrop(i); this.killBee(i); continue; }
           if (droneFly && a >= 12) { droneFlying++; if (R() < 0.012) { this.killBee(i); continue; } }
         }
         if (a >= 12) matureDrones++;
@@ -593,6 +599,18 @@ class Hive {
 
     // ---------- 4. queen
     this.queenHour(c, nurseCap);
+    // clean-out: on a day warm enough to fly, workers drag the winter's dead off the floor — most are dumped at the
+    // entrance and in front of the hive, some carried off in flight; bodies outside are slowly taken by wind and scavengers
+    if (!initial){
+      if (this.canFly && this.deadOnFloor > 0){
+        const n = Math.min(this.deadOnFloor, Math.max(40, Math.round(this.deadOnFloor * 0.35)));
+        const dump = Math.round(n * 0.6); this.deadOnFloor -= n; this.dumpN += dump; this.deadOutside += dump; this.flyOffN += n - dump;
+      }
+      this.deadOutside *= this.raining ? 0.97 : 0.99;
+      const c0 = this._corpse0;   // bodies handled in the last hour, for the animation
+      this.corpseRate = { under: this.undertakeN - c0[0], dump: this.dumpN - c0[1], fly: this.flyOffN - c0[2] };
+      this._corpse0 = [this.undertakeN, this.dumpN, this.flyOffN];
+    }
 
     // ---------- 5. receiving & storing incoming food
     if (this.feeder > 0) { const m = Math.min(this.feeder, 1.2e6); this.feeder -= m; this.inSugar += m * .67; this.inWater += m * .33; }
@@ -622,7 +640,7 @@ class Hive {
     const deficit = sugarNeed > 0 ? 1 - gotS / sugarNeed : 0;
     this.starving = deficit > 0.2;
     if (this.starving) {
-      for (let i = 0; i < this.nb; i++) if (this.alive[i] && R() < 0.04 * deficit) this.killBee(i);
+      for (let i = 0; i < this.nb; i++) if (this.alive[i] && R() < 0.04 * deficit) { this.bodyDrop(i); this.killBee(i); }
       if (!this.starveMsg || this.t - this.starveMsg > 72) { this.say('Colony is out of honey — bees are starving.', 'bad'); this.starveMsg = this.t; }
     }
     // ---------- 7. water economy
