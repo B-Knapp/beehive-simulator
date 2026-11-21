@@ -1,5 +1,7 @@
 # Beehive Simulator
 
+**▶ Play it: https://b-knapp.github.io/beehive-simulator/**
+
 An agent-based honey bee (*Apis mellifera*) colony simulation that runs in the browser. Open `index.html` — no build step or dependencies.
 
 - Every bee and every comb cell (~140,000 in two Langstroth deeps) is simulated individually
