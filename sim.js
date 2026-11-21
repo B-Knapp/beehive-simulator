@@ -43,7 +43,7 @@ const FLORA = [
   { name: 'Dandelion meadow', s: 92, e: 150, conc: .4, nec: 31200, pol: 100800, col: '#f08a12' },
   { name: 'Cherry & apple orchard', s: 100, e: 135, conc: .35, nec: 36000, pol: 62999, col: '#e6dcb0' },
   { name: 'Horse chestnut', s: 115, e: 145, conc: .3, nec: 14400, pol: 37800, col: '#b3323a' },
-  { name: 'Oilseed rape field', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
+  { name: 'Manuka Patch', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
   { name: 'Hawthorn hedges', s: 125, e: 155, conc: .35, nec: 21600, pol: 31499, col: '#d8cc98' },
   { name: 'Black locust trees', s: 138, e: 162, conc: .45, nec: 132000, pol: 12600, col: '#d6c78a' },
   { name: 'Poppies', s: 140, e: 195, conc: 0, nec: 0, pol: 50400, col: '#2b2a38' },

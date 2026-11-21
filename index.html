@@ -164,7 +164,7 @@ const FLORA = [
   { name: 'Dandelion meadow', s: 92, e: 150, conc: .4, nec: 31200, pol: 100800, col: '#f08a12' },
   { name: 'Cherry & apple orchard', s: 100, e: 135, conc: .35, nec: 36000, pol: 62999, col: '#e6dcb0' },
   { name: 'Horse chestnut', s: 115, e: 145, conc: .3, nec: 14400, pol: 37800, col: '#b3323a' },
-  { name: 'Oilseed rape field', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
+  { name: 'Manuka Patch', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
   { name: 'Hawthorn hedges', s: 125, e: 155, conc: .35, nec: 21600, pol: 31499, col: '#d8cc98' },
   { name: 'Black locust trees', s: 138, e: 162, conc: .45, nec: 132000, pol: 12600, col: '#d6c78a' },
   { name: 'Poppies', s: 140, e: 195, conc: 0, nec: 0, pol: 50400, col: '#2b2a38' },
@@ -1712,7 +1712,7 @@ const bees = {
   randCell(arr){ if(!arr||!arr.length) return -1; return arr[(Math.random()*arr.length)|0]; },
   // bees mostly work close to where they are: best of a few random candidates
   nearCell(arr, b, tries=6){ if(!arr||!arr.length) return -1; let best=-1, bd=1e9;
-    for (let t=0;t<tries;t++){ const k=arr[(Math.random()*arr.length)|0]; if (this.claimed.has(k) && t<tries-1) continue;   // one bee per cell
+    for (let t=0;t<tries*2;t++){ const k=arr[(Math.random()*arr.length)|0]; if (this.claimed.has(k)) continue;   // one bee per cell
       const r=(k/COLS)|0, c=k%COLS; const d=Math.hypot(cellX(r,c)-b.x, cellY(r)-b.y); if (d<bd){bd=d;best=k;} }
     return best; },
   cellPos(k){ const r=(k/COLS)|0, c=k%COLS; return [cellX(r,c), cellY(r)]; },
@@ -2054,12 +2054,15 @@ function updateDances(dt, side){
       turnTo(b, Math.atan2(vy, vx), 14, dt); b.buzz=false;
       if (f>=1){ d.phase='run'; d.t=0; d.circ++; }
     }
-    // followers crowd round her and move with her, staying in antennal contact
-    d.hd = d.hd==null ? b.a : d.hd + Math.atan2(Math.sin(b.a-d.hd), Math.cos(b.a-d.hd))*Math.min(1, dt*4);
+    // followers hold places around the dance (anchored to the waggle-run direction, not to her body, so they don't
+    // swing round as she turns), drift a little toward wherever she is, and keep their heads turned toward her
+    const axis = Math.atan2(uy, ux);
+    const ax = d.cx + (b.x - d.cx)*0.3, ay = d.cy + (b.y - d.cy)*0.3;
+    const lx = d.cx + (b.x - d.cx)*0.5, ly = d.cy + (b.y - d.cy)*0.5;      // they watch the dance, half-tracking her loops
     d.followers.forEach(fb=>{
-      const ang = d.hd + fb.slot, tx = b.x + Math.cos(ang)*fb.slotR, ty = b.y + Math.sin(ang)*fb.slotR;
-      const far = approach(fb, tx, ty, dt, far0(fb, tx, ty) > 3 ? 5 : 9);
-      turnTo(fb, far>1.5 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(b.y-fb.y, b.x-fb.x), 9, dt);
+      const ang = axis + fb.slot, tx = ax + Math.cos(ang)*(fb.slotR+0.6), ty = ay + Math.sin(ang)*(fb.slotR+0.6);
+      const far = approach(fb, tx, ty, dt, far0(fb, tx, ty) > 3 ? 4.5 : 1.8);
+      turnTo(fb, far>1.5 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(ly-fb.y, lx-fb.x), 2.2, dt);
     });
     if (d.phase!=='approach') d.left -= dt;
     if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; b.pollen=null; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
