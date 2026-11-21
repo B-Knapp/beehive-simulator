@@ -466,6 +466,8 @@ class Hive {
     this.forage(dt * 60);
     // entrance traffic over the last tick (bees per simulated second), for the entrance view
     this.landRate = (this.landN - l0) / (dt * 3600); this.departRate = (this.departN - d0) / (dt * 3600);
+    // smoothed over ~half an hour: trips launched in the same 10-minute step return in waves, real traffic is steadier
+    const sm = 1 - Math.exp(-dt / 0.5); this.landRateS = (this.landRateS ?? this.landRate) + (this.landRate - (this.landRateS ?? this.landRate)) * sm; this.departRateS = (this.departRateS ?? this.departRate) + (this.departRate - (this.departRateS ?? this.departRate)) * sm;
     if (nowH !== prevH) {
       const d = Math.floor(nowH / 24);
       if (d !== this.day) this.daily(d);
@@ -1776,39 +1778,48 @@ function drawBeeSide(ctx, x, y, dir, s, kind, opt){
   const ink = '#24170b';
   // legs: three on the near side (the far three are hidden behind the body), stepping in a tripod gait
   if (detail || !fly){
-    ctx.strokeStyle = ink; ctx.lineWidth = 0.11; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
-    const hips = [[0.62, 0.18], [0.3, 0.3], [-0.02, 0.28]];
+    ctx.strokeStyle = ink; ctx.lineWidth = fly ? 0.11 : 0.15; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
+    const hips = fly ? [[0.62, 0.18], [0.3, 0.3], [-0.02, 0.28]] : [[0.62, 0.12], [0.34, 0.2], [0.02, 0.18]];
     hips.forEach(([hx, hy], k) => {
       if (fly){ const L = [0.55, 0.75, 1.05][k], sw = Math.sin(ph*0.3 + k)*0.05;   // legs hang down (counter-rotated so they dangle)
         const ex = hx - 0.15 - k*0.12 + sw, ey = hy + L;
         ctx.moveTo(hx, hy); ctx.lineTo(hx + (k===0 ? 0.2 : -0.05), hy + L*0.5); ctx.lineTo(ex, ey); return; }
       const sw = Math.sin(ph + (k % 2) * Math.PI) * 0.22, lift = Math.max(0, Math.cos(ph + (k % 2) * Math.PI)) * 0.12;
-      const fx = hx + (k===0 ? 0.35 : k===1 ? 0.05 : -0.45) + sw;
-      ctx.moveTo(hx, hy); ctx.lineTo((hx + fx) / 2 + (k===2 ? -0.15 : 0.1), hy + 0.38); ctx.lineTo(fx, BEE_SIDE_H - lift);
+      const fx = hx + (k===0 ? 0.6 : k===1 ? 0.0 : -0.85) + sw;
+      const kx = k===0 ? hx + 0.55 : k===1 ? hx + 0.15 : hx - 0.55, ky = k===0 ? hy + 0.25 : k===1 ? hy + 0.4 : hy + 0.2;   // knee
+      ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, BEE_SIDE_H - lift);
     });
     ctx.stroke();
   }
   // abdomen (banded), slightly drooping toward the tail
   const ax = Q ? -1.5 : -1.05, arx = Q ? 1.6 : Dr ? 1.3 : 1.15, ary = Dr ? 0.72 : 0.58;
+  // walking, the body is arched (as in a photo of a bee on a surface): thorax highest, abdomen sloping down to the tail,
+  // head tipped down toward the floor
+  const abT = fly ? 0.1 : -0.32;
+  ctx.save(); ctx.translate(-0.15, fly ? 0.06 : 0.02); ctx.rotate(abT); ctx.translate(0.15, 0);
   ctx.fillStyle = stripes(ctx, kind);
-  ctx.beginPath(); ctx.ellipse(ax, 0.06, arx, ary, 0.1, 0, 7); ctx.fill();
-  if (detail){ ctx.fillStyle = 'rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax + 0.1, -ary*0.45, arx*0.75, ary*0.28, 0.1, 0, 7); ctx.fill(); }
+  ctx.beginPath(); ctx.ellipse(ax, 0, arx, ary, 0, 0, 7); ctx.fill();
+  if (detail){ ctx.fillStyle = 'rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax + 0.1, -ary*0.5, arx*0.75, ary*0.28, 0, 0, 7); ctx.fill(); }
+  ctx.restore();
   if (opt.pollen){   // pollen load on the hind leg
     const pr = 0.34 * (opt.load ?? 1);
-    const px = fly ? -0.2 : -0.42, py = fly ? 0.95 : 0.62;
+    const px = fly ? -0.2 : -0.5, py = fly ? 0.95 : 0.5;
     ctx.fillStyle = opt.pollen; ctx.beginPath(); ctx.ellipse(px, py, pr*1.1, pr*0.85, fly ? 0.4 : -0.3, 0, 7); ctx.fill();
     if (detail){ ctx.fillStyle = 'rgba(255,255,235,.4)'; ctx.beginPath(); ctx.ellipse(px-0.08, py-0.1, pr*0.45, pr*0.25, -0.3, 0, 7); ctx.fill(); }
   }
   // thorax, fuzzy
-  ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c'; ctx.beginPath(); ctx.ellipse(0.32, -0.04, 0.6, 0.52, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3, -0.12, 0.48, 0.38, 0, 0, 7); ctx.fill();
-  // head, tilted down, with the compound eye and a mouthpart
-  ctx.fillStyle = '#2e1f10'; ctx.beginPath(); ctx.ellipse(1.06, 0.12, 0.3, 0.4, -0.35, 0, 7); ctx.fill();
-  ctx.fillStyle = '#120d08'; ctx.beginPath(); ctx.ellipse(1.04, 0.02, Dr ? 0.26 : 0.16, Dr ? 0.3 : 0.26, -0.35, 0, 7); ctx.fill();
+  const thY = fly ? -0.04 : -0.14, hX = fly ? 1.06 : 1.02, hY = fly ? 0.12 : 0.2, hT = fly ? -0.35 : -0.75;
+  ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c'; ctx.beginPath(); ctx.ellipse(0.32, thY, 0.6, 0.54, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3, thY - 0.08, 0.48, 0.4, 0, 0, 7); ctx.fill();
+  // head, tilted down, with the big compound eye and the mouthparts
+  ctx.fillStyle = '#2e1f10'; ctx.beginPath(); ctx.ellipse(hX, hY, 0.3, 0.42, hT, 0, 7); ctx.fill();
+  ctx.fillStyle = '#120d08'; ctx.beginPath(); ctx.ellipse(hX - 0.02, hY - 0.08, Dr ? 0.26 : 0.17, Dr ? 0.3 : 0.27, hT, 0, 7); ctx.fill();
   if (detail){
+    ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.arc(hX - 0.05, hY - 0.18, 0.05, 0, 7); ctx.fill();   // eye glint
     ctx.strokeStyle = ink; ctx.lineWidth = 0.08; ctx.beginPath();
-    ctx.moveTo(1.18, -0.2); ctx.quadraticCurveTo(1.45, -0.55, 1.75, -0.38);   // antenna (elbowed)
-    ctx.moveTo(1.2, 0.45); ctx.lineTo(1.28, 0.62); ctx.stroke();               // mandibles / tongue
+    if (fly){ ctx.moveTo(1.18, -0.2); ctx.quadraticCurveTo(1.45, -0.55, 1.75, -0.38); }
+    else { ctx.moveTo(1.2, -0.12); ctx.lineTo(1.5, -0.22); ctx.quadraticCurveTo(1.75, -0.12, 1.85, 0.22); }   // elbowed antenna, angled forward and down
+    ctx.moveTo(hX + 0.12, hY + 0.36); ctx.lineTo(hX + 0.2, hY + 0.55); ctx.stroke();                                 // mandibles / tongue
   }
   if (opt.dust > 0.02 && detail){
     ctx.fillStyle = mixC(opt.dustCol || opt.pollen || '#f0c030', '#fff4c0', 0.25);
@@ -1835,7 +1846,11 @@ function drawBeeSide(ctx, x, y, dir, s, kind, opt){
     wing(-2.2 + beat*0.6, wl*1.15, 0.3, 0.4);                                                 // hindwing
     wing(-1.85 + beat, wl*1.6, 0.42, 0.5);                                                      // forewing
   } else {
-    ctx.beginPath(); ctx.ellipse(-0.55, -0.5, wl, 0.22, 0.08, 0, 7); ctx.fill(); if (detail) ctx.stroke();
+    // folded wings lie back from the top of the thorax, rising slightly toward their tips, clear of the sloping abdomen
+    ctx.save(); ctx.translate(0.15, -0.55); ctx.rotate(0.24);
+    ctx.beginPath(); ctx.ellipse(-wl*0.75, -0.05, wl*1.05, 0.28, 0, 0, 7); ctx.fill(); if (detail) ctx.stroke();
+    if (detail){ ctx.strokeStyle='rgba(120,85,45,.45)'; ctx.lineWidth=0.035; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-wl*1.4,-0.05); ctx.moveTo(-wl*0.3,0.1); ctx.lineTo(-wl*1.0,-0.12); ctx.moveTo(-wl*0.7,-0.2); ctx.lineTo(-wl*0.85,0.15); ctx.stroke(); }
+    ctx.restore();
   }
   if (opt.role){ ctx.fillStyle = opt.role; ctx.beginPath(); ctx.arc(0.32, -0.1, 0.26, 0, 7); ctx.fill(); }
   ctx.restore();
@@ -2078,7 +2093,7 @@ function updateBees(dt){
     const sp = SPEEDS[speedIdx][1];
     let s0=0; for (let s=0;s<20;s++) s0+=sideWeight(s);
     const share = sideWeight(want.side)/Math.max(1e-9,s0);
-    const trueRate = hive.landRate * sp * share / bees.scale;
+    const trueRate = hive.landRateS * sp * share / bees.scale;
     bees.trafficTrue = trueRate * bees.scale;
     const rate = Math.min(4, trueRate);
     bees._traffic = (bees._traffic||0) + rate*dt;
@@ -2409,7 +2424,7 @@ function updateRoleLegend(){
 // ======================================================= landscape
 const lc = $('land'), lx = lc.getContext('2d');
 const landBg = document.createElement('canvas');
-let landKey = '', particles = [], landHover = null;
+let landKey = '', particles = [], landHover = null, landScale = 1, landArrivals = 0;
 function landGeom(){ const W=lc.clientWidth; return { W, cx: W/2, cy: W/2, k: (W/2-14)/4.2 }; }
 function renderLandBg(){
   const dpr=devicePixelRatio||1, {W,cx:c0,cy:c1,k}=landGeom();
@@ -2446,16 +2461,19 @@ function drawLand(dt){
   }
   // particles
   syncParticles(c0,c1,k);
+  // each dot is a sample of the bees actually in the air: it flies at a bee's speed (25 km/h) and works the flowers
+  // for as long as the simulation says, both scaled by the simulation speed — so dots reach the hive at the same rate
+  // as foragers land in the entrance view (when that is too fast to follow, flights are capped at a legible speed)
+  const sp = SPEEDS[speedIdx][1], vpx = Math.min(W*1.2, 25/3600*sp*k);
   for (const p of particles){
-    p.t += dt*p.v*(p.out?1:1);
-    if (p.out && p.t>=1){ p.out=false; p.t=0; p.linger = 0.4+Math.random()*1.2; }
-    if (!p.out && p.linger>0){ p.linger-=dt; }
-    else if (!p.out && p.t>=1){ p.dead = true; }
+    if (p.stage===1){ p.dwell -= dt*sp/60; p.dwReal += dt; if (p.dwell<=0 && p.dwReal>=0.15){ p.stage=2; p.t=0; } }
+    else { p.t += vpx*dt/Math.max(1,p.len); if (p.t>=1){ if (p.stage===0){ p.stage=1; p.t=1; p.dwReal=0; } else { p.dead=true; landArrivals++; } } }
     let fx, fy;
     const tx=p.tx, ty=p.ty;
-    if (p.out){ fx=c0+(tx-c0)*p.t; fy=c1+(ty-c1)*p.t; }
-    else if (p.linger>0){ fx=tx+Math.sin(p.ph+=dt*6)*3; fy=ty+Math.cos(p.ph*1.3)*3; }
+    if (p.stage===0){ fx=c0+(tx-c0)*p.t; fy=c1+(ty-c1)*p.t; }
+    else if (p.stage===1){ fx=tx+Math.sin(p.ph+=dt*Math.min(6,0.4+sp/60))*3; fy=ty+Math.cos(p.ph*1.3)*3; }
     else { fx=tx+(c0-tx)*p.t; fy=ty+(c1-ty)*p.t; }
+    p.out = p.stage===0;
     const perp = Math.sin(p.t*Math.PI)*p.bend; const ang=Math.atan2(ty-c1,tx-c0);
     fx += -Math.sin(ang)*perp; fy += Math.cos(ang)*perp;
     g.fillStyle = p.kind==='w' ? '#7fc0ff' : p.kind==='d' ? '#2a2016' : '#ffd23a';
@@ -2508,16 +2526,37 @@ function drawSwarms(g, c0, c1, k, dt){
     g.fillText(sw.phase==='bivouac' ? `Swarm #${sw.id}: scouts house-hunting` : sw.phase==='liftoff' ? `Swarm #${sw.id}: quorum — lifting off` : `Swarm #${sw.id}: flying to new home`, cx0+12, cy0-10);
   }
 }
+// how long the bees now in the air actually spend at their flowers (simulated minutes), per patch and load type,
+// so the dots on the map keep the same rhythm as the simulation's trips; refreshed once a second
+let dwellCache = { t: -1, m: {} };
+function dwellFor(key, fallback){
+  const now = performance.now();
+  if (now - dwellCache.t > 1000){ dwellCache.t = now; const acc = {};
+    for (let i=0;i<hive.nb;i++){ if (!hive.alive[i] || hive.fstate[i]!==1) continue; const t=hive.ftask[i]; let kk, dist;
+      if (t===3){ kk='w'; dist=hive.creek.dist; } else if (t===4) continue; else { const P=hive.patches[hive.patch[i]]; if (!P) continue; kk=(t===2?'p':'n')+P.id; dist=P.dist; }
+      const a = acc[kk] || (acc[kk] = [0,0]); a[0] += Math.max(1, hive.tripMin[i] - dist*4.8); a[1]++; }
+    dwellCache.m = {}; for (const kk in acc) dwellCache.m[kk] = acc[kk][0]/acc[kk][1]; }
+  return dwellCache.m[key] ?? fallback;
+}
 function syncParticles(c0,c1,k){
   const NP=hive.patches.length; let total=hive.flyW+hive.flyScout+hive.flyDrones; for(let p=0;p<NP;p++) total+=hive.flyN[p]+hive.flyP[p];
-  const sc = total>320 ? 320/total : 1;
+  const sc = total>320 ? 320/total : 1; landScale = 1/sc;
   const have = {}; for (const p of particles) have[p.key]=(have[p.key]||0)+1;
-  const add=(key,kind,tx,ty,n,col)=>{ const want=Math.round(n*sc+ (n>0&&n*sc<1?1:0)); for(let j=(have[key]||0); j<want && j<(have[key]||0)+3; j++){ particles.push({key,kind,tx:tx+(Math.random()-.5)*8,ty:ty+(Math.random()-.5)*8,t:Math.random()*0.3,out:true,v:0.25+Math.random()*0.25,bend:(Math.random()-.5)*10,ph:Math.random()*6,col}); } };
-  for (const P of hive.patches){ add('n'+P.id,'n',c0+P.x*k,c1+P.y*k,hive.flyN[P.id]); add('p'+P.id,'p',c0+P.x*k,c1+P.y*k,hive.flyP[P.id],P.col); }
-  add('w','w',c0+hive.creek.x*k,c1+hive.creek.y*k,hive.flyW);
+  const sp = SPEEDS[speedIdx][1], vpx = Math.min(lc.clientWidth*1.2, 25/3600*sp*k);
+  // dwell = minutes at the flowers (the simulation's handling time); a new dot joins part-way through its trip, so
+  // opening the page or speeding up doesn't send a burst of dots out of the hive together
+  const add=(key,kind,tx,ty,n,col,dwellMin)=>{ const want=Math.round(n*sc+ (n>0&&n*sc<1?1:0)); const fresh=!have[key];
+    for(let j=(have[key]||0); j<want && j<(have[key]||0)+(fresh?want:3); j++){
+      const X=tx+(Math.random()-.5)*8, Y=ty+(Math.random()-.5)*8, len=Math.hypot(X-c0,Y-c1), dw=dwellFor(key, dwellMin)*(0.8+Math.random()*0.4);
+      const p={key,kind,tx:X,ty:Y,len,stage:0,t:0,dwell:dw,dwReal:0,bend:(Math.random()-.5)*10,ph:Math.random()*6,col};
+      if (fresh && sp>0){ const leg=len/Math.max(1e-6,vpx), dwR=Math.max(0.15,dw*60/sp), r=Math.random()*(2*leg+dwR);
+        if (r<leg) p.t=r/leg; else if (r<leg+dwR){ p.stage=1; p.t=1; p.dwell=dw*(1-(r-leg)/dwR); } else { p.stage=2; p.t=(r-leg-dwR)/leg; } }
+      particles.push(p); } };
+  for (const P of hive.patches){ add('n'+P.id,'n',c0+P.x*k,c1+P.y*k,hive.flyN[P.id],null,28); add('p'+P.id,'p',c0+P.x*k,c1+P.y*k,hive.flyP[P.id],P.col,18); }
+  add('w','w',c0+hive.creek.x*k,c1+hive.creek.y*k,hive.flyW,null,5);
   if (!window._dca){ const a=Math.random()*6.28; window._dca=[Math.cos(a)*1.4,Math.sin(a)*1.4]; }
-  add('d','d',c0+window._dca[0]*k,c1+window._dca[1]*k,hive.flyDrones);
-  if (hive.flyScout>0){ const a=Math.random()*6.28, d=0.5+Math.random()*3; add('s'+(Date.now()>>11&7),'n',c0+Math.cos(a)*d*k,c1+Math.sin(a)*d*k,Math.min(2,hive.flyScout)); }
+  add('d','d',c0+window._dca[0]*k,c1+window._dca[1]*k,hive.flyDrones,null,25);
+  if (hive.flyScout>0){ const a=Math.random()*6.28, d=0.5+Math.random()*3; add('s'+(Date.now()>>11&7),'n',c0+Math.cos(a)*d*k,c1+Math.sin(a)*d*k,Math.min(2,hive.flyScout),null,30); }
 }
 lc.addEventListener('mousemove', e=>{ const r=lc.getBoundingClientRect(), {cx:c0,cy:c1,k}=landGeom(); const mx=e.clientX-r.left,my=e.clientY-r.top; let best=null,bd=14;
   for(const P of hive.patches){ const d=Math.hypot(c0+P.x*k-mx,c1+P.y*k-my); if(d<bd){bd=d;best=P;} }
@@ -2529,7 +2568,7 @@ function updateLandInfo(){
   const P=landHover, el=$('landInfo');
   if (P && P.site){ const S=P.site; el.innerHTML = `<b>${S.name}</b> · ${S.dist.toFixed(2)} km ${compass(S.az)} · ${S.vol.toFixed(0)} L cavity · ${S.ent.toFixed(0)} cm² entrance · ${S.height.toFixed(0)} m up · faces ${compass(S.facing)}<br>Nest-site quality for bees: ${(S.q*100).toFixed(0)}% ${S.occupied?'· <span class="good">now home to a wild colony</span>':''}`; return; }
   if (P){ const b=P.bloom; el.innerHTML = `<b style="color:${P.col}">●</b> <b>${P.name}</b> · ${P.dist.toFixed(2)} km ${compass(P.az)} · ${b>0.01?`in bloom (${(b*100).toFixed(0)}%)`:`blooms ${doyToDate(P.s)} – ${doyToDate(P.e)}`}<br>${P.nec?`nectar ~${(P.conc*100).toFixed(0)}% sugar`:'pollen only'} · pollen colour <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${P.col};vertical-align:middle"></span> · foragers now: ${fmt(hive.flyN[P.id]+hive.flyP[P.id])}`; }
-  else { const out=hive.outCount(); el.innerHTML = hive.canFly ? `${fmt(out)} foragers in the air · ${fmt(hive.flyDrones)} drones on mating flights · yellow = nectar, coloured dot = pollen load, blue = water` : (hive.isDay ? (hive.raining?'Raining — foragers stay home.':`Too cold to fly (${hive.Tout.toFixed(0)} °C < ~12 °C).`) : 'Night — all foragers are home.'); }
+  else { const out=hive.outCount(); el.innerHTML = hive.canFly ? `${fmt(out)} foragers out${landScale>1.05?` (1 dot ≈ ${fmt(landScale)} bees)`:''} · ${fmt(hive.flyDrones)} drones on mating flights · yellow = nectar, coloured dot = pollen, blue = water` : (hive.isDay ? (hive.raining?'Raining — foragers stay home.':`Too cold to fly (${hive.Tout.toFixed(0)} °C < ~12 °C).`) : 'Night — all foragers are home.'); }
 }
 function compass(az){ return ['N','NE','E','SE','S','SW','W','NW'][Math.round(az/45)%8]; }
 
@@ -2612,7 +2651,7 @@ function drawEntrance(dt){
   const g=ex; g.setTransform(dpr,0,0,dpr,0,0); entBg(g, G);
   const sp = SPEEDS[speedIdx][1], VIEW = 0.6;                       // the view shows ~60% of the entrance's width
   const flying = hive.canFly || hive.outCount()>0;
-  ENT.inRate = hive.landRate*sp*VIEW; ENT.outRate = hive.departRate*sp*VIEW;
+  ENT.inRate = hive.landRateS*sp*VIEW; ENT.outRate = hive.departRateS*sp*VIEW;
   ENT.scale = Math.max(1, (ENT.inRate+ENT.outRate)/(2*ENT.CAP));
   if (sp>0){ ENT.accIn += ENT.inRate/ENT.scale*dt; ENT.accOut += ENT.outRate/ENT.scale*dt; }
   ENT.accIn = Math.min(ENT.accIn, 20); ENT.accOut = Math.min(ENT.accOut, 20);
@@ -2664,7 +2703,7 @@ function drawEntrance(dt){
 }
 function updateEntInfo(){
   const el=$('entInfo'), sp=SPEEDS[speedIdx][1];
-  const inM = hive.landRate*60, outM = hive.departRate*60;
+  const inM = hive.landRateS*60, outM = hive.departRateS*60;
   let msg;
   if (!hive.isDay) msg = hive.outCount()>0 ? `Dusk — the last foragers are coming home (${fmt(inM)} landing per minute).` : 'Night — the whole colony is inside; the entrance is quiet.';
   else if (hive.raining) msg = 'Raining — no flights. Foragers wait inside.';

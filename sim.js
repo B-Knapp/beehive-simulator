@@ -330,6 +330,8 @@ class Hive {
     this.forage(dt * 60);
     // entrance traffic over the last tick (bees per simulated second), for the entrance view
     this.landRate = (this.landN - l0) / (dt * 3600); this.departRate = (this.departN - d0) / (dt * 3600);
+    // smoothed over ~half an hour: trips launched in the same 10-minute step return in waves, real traffic is steadier
+    const sm = 1 - Math.exp(-dt / 0.5); this.landRateS = (this.landRateS ?? this.landRate) + (this.landRate - (this.landRateS ?? this.landRate)) * sm; this.departRateS = (this.departRateS ?? this.departRate) + (this.departRate - (this.departRateS ?? this.departRate)) * sm;
     if (nowH !== prevH) {
       const d = Math.floor(nowH / 24);
       if (d !== this.day) this.daily(d);
