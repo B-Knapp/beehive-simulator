@@ -1626,6 +1626,13 @@ function renderComb(){
     const tNow = hive.t + simAcc;
     for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push({ k, at: tNow, drone: hive.caste[base+k]===1, ang: hsh(k*7+3)*6.28 });
   }
+  // eggs the simulation laid this hour on the queen's face: hidden until the queen sprite lays them, cell by cell
+  if (prevComb.side===side && prevComb.st){
+    const fresh = []; for (let k=0;k<CPS;k++) if (prevComb.st[k]!==2 && hive.st[base+k]===2) fresh.push(k);
+    if (fresh.length){ bees.eggMask.clear();                          // anything she didn't get to last hour appears now
+      if (hive.queen.present && hive.queenSide===side && !hive.layingWorkers) for (const k of fresh) bees.eggMask.add(k);
+      bees.eggPer = 3600 / Math.max(1, bees.eggMask.size); }            // simulated seconds per egg this hour
+  } else bees.eggMask.clear();
   prevComb.side = side; prevComb.st = hive.st.slice(base, base+CPS);
   // cells in the last hour of development: the bee inside starts chewing out (drawn over the cap each frame)
   bees.finalHour = [];
@@ -1647,7 +1654,7 @@ function renderComb(){
       collect(lists, i, k);
       if (!rowVisible) continue;
       const x = ox + cellX(r,col)*R; if (x<-R*2||x>W+R*2) continue;
-      const s = st[i];
+      const s = bees.eggMask.has(k) ? 0 : st[i];
       if (!hive.drawn[i]) { c.fillStyle=shade('#e8d9a4', 0.97+hsh(i)*0.05); c.beginPath(); hexPath(c,x,y,R*0.98); c.fill(); if(detail){c.strokeStyle='rgba(160,130,70,.4)';c.lineWidth=Math.max(.5,R*0.06);c.stroke();} continue; }
       if (detail) rims.push(x,y);
       // ---- cell cavity (cells whose contents fill the mouth skip this)
@@ -1936,8 +1943,8 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
 // ---------- bee sprites on the visible comb
 const MAXS = 650;
 const bees = {
-  list: [], dancers: [], queen: null, scale: 1, emerging: [], claimed: new Set(),
-  reset(){ this.list=[]; this.dancers=[]; this.queen=null; this.emerging=[]; this.claimed.clear(); },
+  list: [], dancers: [], queen: null, scale: 1, emerging: [], claimed: new Set(), eggMask: new Set(), eggPer: 60,
+  reset(){ this.list=[]; this.dancers=[]; this.queen=null; this.emerging=[]; this.claimed.clear(); this.eggMask.clear(); },
   randCell(arr){ if(!arr||!arr.length) return -1; return arr[(Math.random()*arr.length)|0]; },
   // bees mostly work close to where they are: best of a few random candidates
   nearCell(arr, b, tries=6){ if(!arr||!arr.length) return -1; let best=-1, bd=1e9;
@@ -2145,13 +2152,30 @@ function updateBees(dt){
     const q = bees.queen;
     const ret = bees.list.filter(b=>b.mode==='retinue');
     if (!hive.queen.virgin && ret.length < 8 && Math.random()<dt*2){ const c = nearestFree(q.x, q.y, 14); if (c){ c.mode='retinue'; c.slot = Math.random()*6.28; } }
-    moveBee(q, dt, 2.2);
-    if (q.mode==='idle'){ q.t-=dt; if (q.t<=0){
+    moveBee(q, dt, q.spd || 2.2);
+    const sp = SPEEDS[speedIdx][1], tS = hive.t + simAcc;
+    // real seconds she has per egg at this speed; her inspect/lay timings shrink to fit (a queen takes ~10–20 s an egg)
+    const perReal = sp>0 ? bees.eggPer/sp : 1e9, f = Math.min(1, perReal/16);
+    if (q.mode==='idle' && bees.eggMask.size && !hive.queen.virgin && hive.queen.laying){ q.t -= dt;
+      if (q.t<=0 && tS >= (q.nextAt||0)){
+        // the nearest cell the simulation gave an egg this hour: walk up to it and put her head in to inspect it
+        let best=-1, bd=1e9; for (const k of bees.eggMask){ const [cx0,cy0]=bees.cellPos(k), d=Math.hypot(cx0-q.x, cy0-q.y); if (d<bd){bd=d;best=k;} }
+        const [cx0,cy0] = bees.cellPos(best); let ux=cx0-q.x, uy=cy0-q.y; const L=Math.hypot(ux,uy);
+        if (L < 0.5){ const a=Math.random()*6.28; ux=Math.cos(a); uy=Math.sin(a); } else { ux/=L; uy/=L; }
+        q.layK = best; q.u = [ux,uy]; q.tx = cx0 - ux*1.15; q.ty = cy0 - uy*1.15; q.mode='walk'; q.next='inspect'; q.work = 2.5*f + 0.05; q.spd = 2.2/Math.max(0.25, f);
+      } }
+    else if (q.mode==='inspect'){ q.t-=dt; if (q.t<=0){   // satisfied: she walks forward over the cell so her abdomen ends above it
+        const [cx0,cy0] = bees.cellPos(q.layK), [ux,uy] = q.u; q.tx = cx0 + ux*2.6; q.ty = cy0 + uy*2.6; q.mode='walk'; q.next='lay'; q.work = 9*f + 0.08; q.spd = 2.2/Math.max(0.25, f); } }
+    else if (q.mode==='lay' && q.layK!=null){ q.t-=dt; if (q.t<=0){
+        bees.eggMask.delete(q.layK); bees.eggDirty = true; q.layK = null;     // the egg is in the cell
+        const hourLeft = (Math.floor(hive.t + 1e-6) + 1 - tS)*3600, behind = bees.eggMask.size*bees.eggPer > hourLeft;
+        q.mode='idle'; q.t = 0.3*f; q.nextAt = behind ? 0 : tS + bees.eggPer/3600*0.85; q.spd = 0; } }   // ahead of schedule she pauses; behind, she hurries on
+    else if (q.mode==='idle'){ q.t-=dt; if (q.t<=0){
         // head for empty cells around where the simulated queen is working on this face
         const qi = hive.qpos ? hive.qpos.i : -1, here = qi>=0 && ((qi/CPS)|0)===side;
         const anchor = here ? (()=>{ const k=qi%CPS; return { x: cellX((k/COLS)|0, k%COLS), y: cellY((k/COLS)|0) }; })() : q;
         const k = bees.nearCell(sideLists.empty.length? sideLists.empty : sideLists.brood, Math.hypot(anchor.x-q.x,anchor.y-q.y)>12 ? anchor : q, 10);
-        if (k>=0){ const p=bees.cellPos(k); q.tx=p[0]; q.ty=p[1]; q.mode='walk'; q.next= hive.queen.virgin ? 'idle' : 'lay'; q.work = hive.queen.virgin ? 1 : 3+Math.random()*3; }
+        if (k>=0){ const p=bees.cellPos(k); q.tx=p[0]; q.ty=p[1]; q.mode='walk'; q.next='idle'; q.work = 1+Math.random()*2; }   // between eggs she wanders among the brood, attended by her retinue
         q.t = 0.5; } }
     else if (q.mode==='lay'){ q.t-=dt; if (q.t<=0){ q.mode='idle'; q.t = 1+Math.random()*3; } }
   }
@@ -2360,6 +2384,7 @@ function updateDances(dt, side){
 }
 function drawComb(){
   layout();
+  if (bees.eggDirty && performance.now() - (bees._eggRender||0) > 200){ bees.eggDirty = false; bees._eggRender = performance.now(); combDirty = true; }
   if (combDirty) renderComb();
   const { R, ox, oy, W, H, dpr } = geo;
   cx.setTransform(1,0,0,1,0,0); cx.drawImage(cache,0,0);
@@ -2405,7 +2430,8 @@ function drawComb(){
     if (b.side){ const dx=b.tx-b.x, dy=b.ty-b.y; drawBeeSide(cx, x, y, b.mode==='fall'?-1:(dx>=0?1:-1), sc, b.kind, { spin: b.spin, fly:b.buzz, pitch: b.buzz ? Math.max(-0.5, Math.min(0.5, Math.atan2(dy, Math.abs(dx)+1e-6))) : 0, step:b.wob, pollen:b.pollen, load:b.load, dust:b.dust||0, dustCol:b.dustCol, seed:b.seed, role: role ? ROLE_COL[b.role] : null }); continue; }
     drawBee(cx, x, y, b.a, sc, b.kind, { pale: b.born!=null ? Math.max(0, 1-(hive.t+simAcc-b.born)/24) : 0, buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
   }
-  if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
+  if (bees.queen){ const q=bees.queen; if ((q.mode==='lay'||q.mode==='inspect') && q.u) q.a = Math.atan2(q.u[1], q.u[0]);
+    drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay' || q.mode==='inspect', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
   // queen piping: free virgin "toots", sealed queens "quack"
   if (hive.piping && hive.piping.toot){
