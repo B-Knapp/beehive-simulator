@@ -1039,71 +1039,142 @@ function hexPath(ctx,x,y,r){ ctx.moveTo(x+HEX[0][0]*r,y+HEX[0][1]*r); for(let k=
 const POLC = FLORA.map(f=>f.col);
 function shade(hex, f){ const n=parseInt(hex.slice(1),16); let r=n>>16,g=n>>8&255,b=n&255; r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f); return `rgb(${Math.min(255,r)},${Math.min(255,g)},${Math.min(255,b)})`; }
 
+// ---------- realistic frame & comb ("natural beeswax" style)
+function hsh(i){ let x=Math.imul(i^0x9e3779b9,0x85ebca6b); x^=x>>>13; x=Math.imul(x,0xc2b2ae35); x^=x>>>16; return (x>>>0)/4294967296; }
+function rgbOf(h){ const n=parseInt(h.slice(1),16); return [n>>16,n>>8&255,n&255]; }
+function mixC(a,b,t){ const A=rgbOf(a),B=rgbOf(b); return `rgb(${A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')})`; }
+function grain(c,x,y,w,h,horiz,base,seed,R){
+  const g=c.createLinearGradient(x,y,horiz?x:x+w,horiz?y+h:y);
+  g.addColorStop(0,shade(base,1.12)); g.addColorStop(0.5,base); g.addColorStop(1,shade(base,0.78));
+  c.fillStyle=g; c.fillRect(x,y,w,h);
+  c.save(); c.beginPath(); c.rect(x,y,w,h); c.clip();
+  const n = Math.max(8, Math.round((horiz?h:w)/Math.max(1.2,R*0.25)));
+  const L = horiz?w:h, step = Math.max(4, L/80), amp=(horiz?h:w)*0.02;
+  for (let k=0;k<n;k++){
+    const t=(k+hsh(seed+k)*0.8)/n, a=0.08+hsh(seed*3+k)*0.16, ph=hsh(seed+k*13)*6;
+    c.strokeStyle = hsh(seed+k*7)<0.5 ? `rgba(70,40,15,${a})` : `rgba(255,230,180,${a*0.6})`;
+    c.lineWidth = Math.max(0.5, R*0.08*(0.5+hsh(k+seed)));
+    c.beginPath();
+    for (let s=0;s<=L;s+=step){
+      const off = Math.sin(s/L*6.28*1.5+ph)*amp + Math.sin(s/L*6.28*7+ph*2)*amp*0.3;
+      const px = horiz? x+s : x+t*w+off, py = horiz? y+t*h+off : y+s;
+      s===0?c.moveTo(px,py):c.lineTo(px,py);
+    }
+    c.stroke();
+  }
+  c.restore();
+}
+function drawFrameWood(c, ox, oy, R){
+  const fx=ox-R*1.6, fy=oy-R*3.4, fw=COMB_W*R+R*3.2, fh=COMB_H*R+R*4.9, base='#c29a62';
+  c.fillStyle='rgba(0,0,0,.35)'; c.fillRect(fx-R*3+R*0.4, fy+R*0.5, fw+R*6, R*2.6);
+  grain(c, fx-R*3.2, fy, fw+R*6.4, R*2.6, true, base, 11, R);                  // top bar with lugs
+  grain(c, fx, fy+R*2.6, R*1.6, fh-R*2.6, false, shade(base,1.05), 23, R);      // end bars
+  grain(c, fx+fw-R*1.6, fy+R*2.6, R*1.6, fh-R*2.6, false, shade(base,1.05), 37, R);
+  grain(c, fx-R*0.4, fy+R*2.6, R*2.4, R*7, false, shade(base,0.98), 51, R);     // Hoffman self-spacing shoulders
+  grain(c, fx+fw-R*2, fy+R*2.6, R*2.4, R*7, false, shade(base,0.98), 57, R);
+  grain(c, fx, fy+fh-R*1.3, fw, R*1.3, true, shade(base,1.02), 71, R);          // bottom bar
+  for (const [nx,ny] of [[fx+R*0.8,fy+R*1.3],[fx+fw-R*0.8,fy+R*1.3],[fx+R*0.8,fy+fh-R*0.65],[fx+fw-R*0.8,fy+fh-R*0.65]]){
+    c.fillStyle='#55504a'; c.beginPath(); c.arc(nx,ny,Math.max(1,R*0.22),0,7); c.fill();
+    c.fillStyle='rgba(255,255,255,.3)'; c.beginPath(); c.arc(nx-R*0.06,ny-R*0.06,Math.max(.5,R*0.09),0,7); c.fill();
+  }
+  c.strokeStyle='rgba(255,235,190,.25)'; c.lineWidth=Math.max(1,R*0.12); c.strokeRect(fx-R*3.2, fy, fw+R*6.4, R*2.6);
+}
+const COMB_STYLE = {   // per box: bottom brood deep (old, dark), upper deep (amber), honey super (fresh pale wax)
+  wall:   ['#6a4520','#9a6c30','#e2cf96'],
+  cavity: ['#3a2510','#6b4a20','#c9b27a'],
+  wcap:'#c49456', dcap:'#a8753a', hcapHi:'#fbf3d8', hcapLo:'#e8d6a0', nectarRGB:'225,155,30', rim:'rgba(255,225,160,.35)',
+};
 function renderComb(){
   const { R, ox, oy, W, H, dpr } = geo;
   const c = ccx; c.setTransform(dpr,0,0,dpr,0,0);
   c.fillStyle='#0f0b06'; c.fillRect(0,0,W,H);
-  const side = (sel.box*10+sel.frame)*2+sel.side, base = side*CPS;
-  const newComb = sel.box===2;
-  // wooden frame
-  const fx = ox - R*1.4, fy = oy - R*3.2, fw = COMB_W*R + R*2.8, fh = COMB_H*R + R*4.6;
-  c.fillStyle='#8a6a3e'; c.fillRect(fx - R*3, fy, fw + R*6, R*2.4);   // top bar with lugs
-  c.fillStyle='#a07c49'; c.fillRect(fx, fy+R*2.4, R*1.4, fh-R*2.4); c.fillRect(fx+fw-R*1.4, fy+R*2.4, R*1.4, fh-R*2.4);
-  c.fillRect(fx, fy+fh-R*1.2, fw, R*1.2);
-  // wax wall base
-  c.fillStyle = newComb ? '#e6d29a' : (sel.box===0 ? '#6e4a20' : '#86602c');
-  c.fillRect(ox, oy, COMB_W*R, COMB_H*R);
+  const side = (sel.box*10+sel.frame)*2+sel.side, base = side*CPS, box = sel.box, CS = COMB_STYLE;
+  drawFrameWood(c, ox, oy, R);
+  // comb wall (wax) with subtle mottling
+  c.fillStyle = CS.wall[box]; c.fillRect(ox, oy, COMB_W*R, COMB_H*R);
+  c.save(); c.beginPath(); c.rect(ox,oy,COMB_W*R,COMB_H*R); c.clip();
+  for (let k=0;k<160;k++){ c.fillStyle=`rgba(${hsh(k)<.5?'0,0,0':'255,230,170'},${0.04+hsh(k+7)*0.05})`; c.beginPath(); c.ellipse(ox+hsh(k*3)*COMB_W*R, oy+hsh(k*5)*COMB_H*R, R*(2+hsh(k*7)*6), R*(1.5+hsh(k*11)*4), hsh(k)*3,0,7); c.fill(); }
+  c.restore();
   const lists = { egg:[], larva:[], capped:[], nectar:[], honey:[], pollen:[], empty:[], dirty:[], undrawn:[], brood:[] };
   // bees that just chewed out of their cells on this face (capped brood → vacated cell)
   if (prevComb.side===side && prevComb.st){
     for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push(k);   // (vacated cells are often cleaned within the same hour)
   }
   prevComb.side = side; prevComb.st = hive.st.slice(base, base+CPS);
-  const st=hive.st, rr = R*0.9, detail = R >= 4.2;
-  const emptyCol = newComb ? '#cdb77c' : (sel.box===0 ? '#2f1f0d' : '#3d2a12');
-  const minX = -2, maxX = W+2;
+  const st=hive.st, rr = R*0.86, detail = R >= 4.2, hi = R >= 9, cavity = CS.cavity[box];
+  const cavMid = shade(cavity,1.0), cavTop = shade(cavity,0.6), cavLow = shade(cavity,1.22), floorCol = shade(cavity,0.72);
+  const wcapHi = shade(CS.wcap,1.15), dcapHi = shade(CS.dcap,1.3), dcapLo = shade(CS.dcap,0.8);
+  const H0=HEX[0],H1=HEX[1],H2=HEX[2],H3=HEX[3],H4=HEX[4],H5=HEX[5];
+  // shading inside a cell: dark band under the upper wall, light band on the lower wall
+  const topShadow = (x,y)=>{ c.beginPath(); c.moveTo(x+H5[0]*rr,y+H5[1]*rr); c.lineTo(x+H0[0]*rr,y+H0[1]*rr); c.lineTo(x+H1[0]*rr,y+H1[1]*rr); c.lineTo(x+H1[0]*rr*0.55,y+H1[1]*rr*0.2); c.lineTo(x+H5[0]*rr*0.55,y+H5[1]*rr*0.2); c.closePath(); c.fill(); };
+  const lowLight  = (x,y)=>{ c.beginPath(); c.moveTo(x+H2[0]*rr,y+H2[1]*rr); c.lineTo(x+H3[0]*rr,y+H3[1]*rr); c.lineTo(x+H4[0]*rr,y+H4[1]*rr); c.lineTo(x+H4[0]*rr*0.7,y+H4[1]*rr*0.55); c.lineTo(x+H2[0]*rr*0.7,y+H2[1]*rr*0.55); c.closePath(); c.fill(); };
+  const rims = [];   // wall-top highlights, stroked in one batch at the end
   for (let r=0;r<ROWS;r++){
-    const y = oy + cellY(r)*R; if (y < -R*2 || y > H+R*2) { // still collect lists
-      for (let col=0;col<COLS;col++) collect(lists, base+r*COLS+col, r*COLS+col); continue; }
+    const y = oy + cellY(r)*R;
+    const rowVisible = !(y < -R*2 || y > H+R*2);
     for (let col=0;col<COLS;col++){
       const i = base + r*COLS + col, k = r*COLS+col;
       collect(lists, i, k);
-      const x = ox + cellX(r,col)*R; if (x<minX-R||x>maxX+R) continue;
+      if (!rowVisible) continue;
+      const x = ox + cellX(r,col)*R; if (x<-R*2||x>W+R*2) continue;
       const s = st[i];
-      if (!hive.drawn[i]) { c.fillStyle='#e9dcaa'; c.beginPath(); hexPath(c,x,y,R*0.97); c.fill(); if(detail){c.strokeStyle='rgba(150,120,60,.35)';c.lineWidth=.6;c.stroke();} continue; }
-      const rad = hive.droneCell[i] ? rr*1.0 : rr;
-      let fill = emptyCol;
-      switch(s){
-        case 2: case 3: fill = newComb ? '#c9b27a' : '#3a2812'; break;
-        case 4: fill = hive.caste[i]===1 ? '#b07c3a' : '#c4935a'; if (sel.box===0) fill = hive.caste[i]===1 ? '#9a6a30':'#b4844c'; break;
-        case 5: { const sg=hive.sugar[i], w=hive.water[i], vol=sg/1.59+w, cap=hive.droneCell[i]?500:280, f=Math.min(1,vol/cap);
-                  fill = f>0.6 ? '#e4a524' : f>0.3 ? '#c8861c' : '#9c6418'; if (newComb) fill = f>0.6?'#f0bd3c':f>0.3?'#e0a43a':'#d49a40'; break; }
-        case 6: fill = '#f1e2a6'; break;
-        case 7: fill = POLC[(hive.pcol[i]||1)-1] || '#e0a030'; break;
-        case 1: fill = newComb ? '#bba468' : '#24170a'; break;
+      if (!hive.drawn[i]) { c.fillStyle=shade('#e8d9a4', 0.97+hsh(i)*0.05); c.beginPath(); hexPath(c,x,y,R*0.98); c.fill(); if(detail){c.strokeStyle='rgba(160,130,70,.4)';c.lineWidth=Math.max(.5,R*0.06);c.stroke();} continue; }
+      if (detail) rims.push(x,y);
+      // ---- cell cavity (cells whose contents fill the mouth skip this)
+      if (s!==4 && s!==6 && s!==7){
+        c.fillStyle = detail ? cavMid : shade(cavity, 0.92+hsh(i)*0.16); c.beginPath(); hexPath(c,x,y,rr); c.fill();
+        if (detail){ c.fillStyle=cavTop; topShadow(x,y); c.fillStyle=cavLow; lowLight(x,y);
+          if (s<=3){ c.fillStyle=floorCol; c.beginPath(); hexPath(c,x,y+R*0.08,rr*0.5); c.fill(); }
+          if (s<=3 && box===0 && hi){ c.strokeStyle='rgba(20,12,5,.35)'; c.lineWidth=R*0.05; c.beginPath(); hexPath(c,x,y,rr*0.82); c.stroke(); } }
       }
-      c.fillStyle = fill; c.beginPath(); hexPath(c,x,y,rad); c.fill();
-      if (!detail) continue;
-      if (s===2){ c.fillStyle='#fbf8ee'; c.beginPath(); c.ellipse(x,y,R*0.13,R*0.3,0.3,0,7); c.fill(); }
-      else if (s===3){ const a=Math.min(1,(hive.age[i]-72)/((hive.caste[i]===1?240:216)-72)); const rad2=R*(0.16+0.46*a);
-        c.fillStyle='rgba(255,252,235,.32)'; c.beginPath(); c.arc(x,y,R*(0.35+0.3*a),0,7); c.fill();   // brood food (jelly)
-        c.strokeStyle='#f6f1e2'; c.lineWidth=Math.max(1,R*(0.12+0.3*a)); c.lineCap='round'; c.beginPath(); c.arc(x,y,rad2*0.72,0.7,5.6); c.stroke();
-        if (R>14){ c.strokeStyle='rgba(190,175,140,.6)'; c.lineWidth=0.8; for(let q=1;q<6;q++){ const t=0.7+q*0.82, r1=rad2*0.72-R*(0.06+0.15*a), r2=rad2*0.72+R*(0.06+0.15*a); c.beginPath(); c.moveTo(x+Math.cos(t)*r1,y+Math.sin(t)*r1); c.lineTo(x+Math.cos(t)*r2,y+Math.sin(t)*r2); c.stroke(); } } }
-      else if (s===4){ c.fillStyle= hive.caste[i]===1 ? 'rgba(255,230,180,.28)' : 'rgba(255,235,200,.18)'; c.beginPath(); c.arc(x-R*0.15,y-R*0.15,R*(hive.caste[i]===1?0.5:0.38),0,7); c.fill(); }
-      else if (s===5){ c.fillStyle='rgba(255,250,220,.55)'; c.beginPath(); c.ellipse(x-R*0.3,y-R*0.32,R*0.2,R*0.1,-0.6,0,7); c.fill(); }
-      else if (s===6){ c.fillStyle='rgba(255,255,255,.35)'; c.beginPath(); c.arc(x-R*0.2,y-R*0.2,R*0.32,0,7); c.fill(); }
-      else if (s===7){ c.fillStyle='rgba(0,0,0,.18)'; c.beginPath(); c.arc(x+R*0.2,y+R*0.1,R*0.16,0,7); c.arc(x-R*0.25,y+R*0.25,R*0.12,0,7); c.fill(); }
-      else if (s===1){ c.fillStyle='rgba(200,170,120,.35)'; c.beginPath(); c.arc(x+R*0.15,y+R*0.1,R*0.14,0,7); c.fill(); }
+      // ---- contents
+      if (s===2){        // egg: slender, standing on the cell floor
+        const lean=(hsh(i)-0.5)*0.8; c.fillStyle='#fbf8ef'; c.beginPath(); c.ellipse(x,y+R*0.04,Math.max(.6,R*0.09),Math.max(1.2,R*0.27),lean,0,7); c.fill();
+        if (hi){ c.fillStyle='rgba(255,255,255,.9)'; c.beginPath(); c.ellipse(x-R*0.03,y-R*0.06,R*0.03,R*0.09,lean,0,7); c.fill(); }
+      } else if (s===3){ // larva: glossy curled grub in a pool of brood food
+        const a=Math.min(1,(hive.age[i]-72)/((hive.caste[i]===1?240:216)-72)), rad=R*(0.14+0.46*a);
+        if (detail){ c.fillStyle='rgba(255,252,235,.4)'; c.beginPath(); c.arc(x,y+R*0.05,R*(0.35+0.32*a),0,7); c.fill(); }
+        c.strokeStyle='#f4eedc'; c.lineWidth=Math.max(1,R*(0.1+0.32*a)); c.lineCap='round'; c.beginPath(); c.arc(x,y,rad*0.7,0.8,5.6); c.stroke();
+        if (hi){ c.strokeStyle='rgba(175,160,125,.55)'; c.lineWidth=Math.max(.5,R*0.03); for(let q=1;q<8;q++){ const t=0.8+q*0.6, r1=rad*0.7-R*(0.05+0.16*a), r2=rad*0.7+R*(0.05+0.16*a); c.beginPath(); c.moveTo(x+Math.cos(t)*r1,y+Math.sin(t)*r1); c.lineTo(x+Math.cos(t)*r2,y+Math.sin(t)*r2); c.stroke(); }
+          c.strokeStyle='rgba(255,255,255,.85)'; c.lineWidth=R*0.05; c.beginPath(); c.arc(x,y,rad*0.7-R*0.04,3.4,4.6); c.stroke(); }
+      } else if (s===4){ // capped brood: matte porous caps; drone caps domed (bullet brood)
+        const d = hive.caste[i]===1;
+        c.fillStyle = d ? (detail?dcapLo:CS.dcap) : CS.wcap; c.beginPath(); hexPath(c,x,y,rr*0.98); c.fill();
+        if (detail){ c.fillStyle = d ? dcapHi : wcapHi; c.beginPath(); c.ellipse(x-R*0.12,y-R*0.15,rr*(d?0.55:0.62),rr*(d?0.5:0.58),0,0,7); c.fill();
+          if (d){ c.fillStyle='rgba(255,240,210,.35)'; c.beginPath(); c.arc(x-R*0.25,y-R*0.28,R*0.16,0,7); c.fill(); } }
+        if (hi){ for(let q=0;q<7;q++){ c.fillStyle=`rgba(${hsh(i+q)<.5?'60,35,10':'255,240,210'},.25)`; c.beginPath(); c.arc(x+(hsh(i*3+q)-0.5)*rr*1.2, y+(hsh(i*5+q)-0.5)*rr*1.2, R*0.05,0,7); c.fill(); } }
+      } else if (s===5){ // unripe nectar: glistening liquid, level shows how full
+        const sg=hive.sugar[i], w=hive.water[i], f=Math.min(1,(sg/1.59+w)/(hive.droneCell[i]?500:280));
+        c.fillStyle=`rgba(${CS.nectarRGB},${0.35+0.5*f})`; c.beginPath(); hexPath(c,x,y,rr*0.98); c.fill();
+        if (detail){ c.fillStyle='rgba(255,255,235,.55)'; c.beginPath(); c.ellipse(x-R*0.3,y-R*0.33,R*0.24,R*0.13,-0.6,0,7); c.fill();
+          c.strokeStyle='rgba(255,230,150,.55)'; c.lineWidth=Math.max(.6,R*0.06); c.beginPath(); c.arc(x,y,rr*(0.35+0.5*f),0.2,2.9); c.stroke(); }
+      } else if (s===6){ // capped honey: dry white wax cappings
+        c.fillStyle = CS.hcapLo; c.beginPath(); hexPath(c,x,y,rr); c.fill();
+        if (detail){ c.fillStyle = CS.hcapHi; c.beginPath(); c.ellipse(x-R*0.1,y-R*0.12,rr*0.66,rr*0.6,0,0,7); c.fill(); }
+        if (hi){ c.strokeStyle='rgba(180,150,90,.25)'; c.lineWidth=R*0.03; for(let q=0;q<3;q++){ c.beginPath(); c.arc(x+(hsh(i+q)-0.5)*rr, y+(hsh(i*3+q)-0.5)*rr, R*(0.15+hsh(i*7+q)*0.2), 0, 4); c.stroke(); } }
+      } else if (s===7){ // bee bread: packed matte pollen in layers from different loads
+        const pc = POLC[(hive.pcol[i]||1)-1] || '#e0a030';
+        c.fillStyle=shade(pc,0.92); c.beginPath(); hexPath(c,x,y,rr*0.95); c.fill();
+        if (detail){ const alt=POLC[(hsh(i)*POLC.length)|0]; c.fillStyle=mixC(pc,alt,0.45); c.beginPath(); c.ellipse(x+R*0.15,y+R*0.2,rr*0.55,rr*0.4,hsh(i)*3,0,7); c.fill();
+          if (hi){ for(let q=0;q<14;q++){ c.fillStyle=`rgba(${hsh(i+q)<.5?'0,0,0':'255,255,220'},.22)`; c.fillRect(x+(hsh(i*3+q)-0.5)*rr*1.3, y+(hsh(i*5+q)-0.5)*rr*1.3, R*0.07, R*0.07); }
+            c.fillStyle='rgba(255,255,255,.18)'; c.beginPath(); c.ellipse(x-R*0.25,y-R*0.3,R*0.25,R*0.1,-0.5,0,7); c.fill(); } }
+      } else if (s===1 && detail){ // vacated cell: cocoon fragments round the rim
+        c.strokeStyle='rgba(200,170,120,.35)'; c.lineWidth=R*0.08; c.beginPath(); c.arc(x,y,rr*0.75,hsh(i)*6,hsh(i)*6+2); c.stroke();
+      }
     }
   }
-  // queen cells
+  // wall tops catch the light from above — one batched stroke for every cell
+  if (rims.length){ c.strokeStyle=CS.rim; c.lineWidth=Math.max(.5,R*0.08); c.beginPath();
+    for (let q=0;q<rims.length;q+=2){ const x=rims[q], y=rims[q+1]; c.moveTo(x+H3[0]*rr,y+H3[1]*rr); c.lineTo(x+H2[0]*rr,y+H2[1]*rr); c.lineTo(x+H1[0]*rr,y+H1[1]*rr); }
+    c.stroke(); }
+  // queen cells: peanut-shaped, pitted wax hanging from the comb
   for (const qc of hive.queenCells){
     if (((qc.idx/CPS)|0)!==side) continue;
     const k = qc.idx%CPS, r=(k/COLS)|0, col=k%COLS, x=ox+cellX(r,col)*R, y=oy+cellY(r)*R;
     const L = qc.age<0 ? R*0.9 : R*(1.2 + 1.4*Math.min(1, qc.age/192));
-    c.fillStyle = qc.age>=192 ? '#a8803f' : '#d1ad62'; c.strokeStyle='#5a3f18'; c.lineWidth=Math.max(.8,R*0.12);
-    c.beginPath(); c.ellipse(x, y+L*0.45, R*0.75, L*0.6, 0, 0, 7); c.fill(); c.stroke();
-    if (R>3){ c.fillStyle='rgba(90,60,20,.4)'; for(let t=0;t<5;t++){ c.beginPath(); c.arc(x+(t%2?-1:1)*R*0.3, y+L*(0.15+t*0.15), R*0.09,0,7); c.fill(); } }
+    const g=c.createLinearGradient(x-R,y,x+R,y); g.addColorStop(0,'#8a6430'); g.addColorStop(.4, qc.age>=192?'#c9a560':'#d9b770'); g.addColorStop(1,'#7a5525');
+    c.fillStyle=g; c.beginPath(); c.ellipse(x, y+L*0.45, R*0.75, L*0.6, 0, 0, 7); c.fill();
+    if (R>3){ c.fillStyle='rgba(90,60,20,.45)'; for(let t=0;t<9;t++){ c.beginPath(); c.arc(x+(hsh(t+qc.idx)-0.5)*R, y+L*(0.05+t*0.1), R*0.08,0,7); c.fill(); } }
   }
   sideLists = lists;
   combDirty = false;
@@ -1481,7 +1552,7 @@ function describeCell(i){
   return '';
 }
 function buildLegend(){
-  const items=[['#fbf8ee','Egg'],['#f4efe1','Larva'],['#c4935a','Capped worker brood'],['#9a6a30','Capped drone brood'],['#e4a524','Unripe nectar'],['#f1e2a6','Capped honey'],['#f08a12','Bee bread (pollen colour)'],['#2f1f0d','Empty cell'],['#e9dcaa','Foundation (undrawn)'],['#d1ad62','Queen cell']];
+  const items=[['#fbf8ee','Egg'],['#f4efe1','Larva'],['#c49456','Capped worker brood'],['#a8753a','Capped drone brood'],['#e19b1e','Unripe nectar'],['#f3e6bc','Capped honey'],['#f08a12','Bee bread (pollen colour)'],['#3a2510','Empty cell'],['#e8d9a4','Foundation (undrawn)'],['#d9b770','Queen cell']];
   $('legend').innerHTML = items.map(([c,l])=>`<span><i style="background:${c}"></i>${l}</span>`).join('') + `<span id="roleLegend"></span>`;
 }
 function updateRoleLegend(){
@@ -1695,7 +1766,7 @@ function frame(now){
       if (simAcc > 2) simAcc = 0;   // can't keep up: run at max sustainable speed
     }
     const H = Math.floor(hive.t);
-    if (H!==lastHourSeen){ lastHourSeen=H; combDirty=true; drawHiveMap(); }
+    if (H!==lastHourSeen && now - (window._lastHourDraw||0) > 250){ lastHourSeen=H; window._lastHourDraw=now; combDirty=true; drawHiveMap(); }
     const D = Math.floor(hive.t/24);
     if (D!==lastDaySeen){ lastDaySeen=D; drawChart(); }
     if (hive.log.length!==lastLogLen || (hive.log.length && hive.log[hive.log.length-1]!==window._lastLog)){ lastLogLen=hive.log.length; window._lastLog=hive.log[hive.log.length-1]; updateLog(); }
