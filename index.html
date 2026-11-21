@@ -2272,6 +2272,10 @@ function stepBee(b, dt){
     let ux = d.tx - d.x, uy = d.ty - d.y; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
     const gap = d.side ? 3.4 : 2.5;
     b.x = d.x + ux*gap; b.y = d.y + uy*gap; b.side = d.side; b.tx = d.x; b.ty = d.y; b.buzz = false;
+    // never through the floor: while he is being pulled down onto it, she is already standing on the floor, ahead of
+    // him toward the entrance, seen side-on
+    const floorY = HB.FT - BEE_SIDE_H;
+    if (sel.box===0 && b.y > floorY - 0.6){ b.y = floorY; b.x = Math.min(b.x, d.x - 3.2); b.side = true; }
     b.a = Math.atan2(-uy, -ux) + Math.sin(b.wob*9)*0.08;
     return;
   }
