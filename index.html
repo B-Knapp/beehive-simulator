@@ -1368,7 +1368,7 @@ function returningForager(){
     else { b.tx=b.x; b.ty=b.y-8; b.next='work'; b.work=3; b.unload=true; }
   } else {   // nectar forager: lightly dusted, finds a receiver bee nearby to hand over her load
     b.dust = Math.random()<0.6 ? 0.15+Math.random()*0.3 : 0;
-    b.tx = Math.max(2, Math.min(COMB_W-2, b.x + (Math.random()-0.5)*16)); b.ty = COMB_H - 4 - Math.random()*14; b.cell=null; b.next='work'; b.work=3+Math.random()*4; b.unload=true;
+    b.tx = Math.max(2, Math.min(COMB_W-2, b.x + (Math.random()-0.5)*12)); b.ty = COMB_H - 3 - Math.random()*8; b.cell=null; b.next='seek'; b.unload=true; b.nectar=true; b.waited=0;
   }
   b.a = Math.atan2(b.ty-b.y, b.tx-b.x); b.mode='walk';
   return b;
@@ -1451,6 +1451,47 @@ function nearestFree(x, y, maxD, exclude){
   for (const z of bees.list){ if (!isFree(z) || z===exclude) continue; const d=Math.hypot(z.x-x,z.y-y); if (d<bd){bd=d;best=z;} }
   return best;
 }
+// ---- nectar handover (trophallaxis): forager → receiver bee → nectar cell
+function findReceiver(f){
+  let best=null, bd=16;
+  for (const z of bees.list){
+    if (!isFree(z) || z.forager || z===f) continue;
+    const d = Math.hypot(z.x-f.x, z.y-f.y) * (z.role==='storer' ? 0.6 : 1);   // food-storer bees are the usual receivers
+    if (d<bd){ bd=d; best=z; }
+  }
+  return best;
+}
+function stepHandover(b, dt){
+  if (b.mode==='seek'){            // forager looking for a receiver
+    b.waited += dt;
+    const r = findReceiver(b);
+    if (r){ b.mode='handover'; b.partner=r; b.t=4+Math.random()*4; r.mode='receive'; r.partner=b; r.arrived=false; return; }
+    if (b.waited > 6){ b.waited=0; b.tx=Math.max(2,Math.min(COMB_W-2,b.x+(Math.random()-0.5)*14)); b.ty=Math.max(COMB_H*0.4,b.y-4-Math.random()*6); b.mode='walk'; b.next='seek'; }
+    b.a += Math.sin(b.wob*4)*0.03;   // turning about, searching
+    return;
+  }
+  const p = b.partner;
+  if (b.mode==='handover'){        // forager regurgitates nectar; receiver drinks it
+    if (!p || p.gone || p.mode!=='receive' || !bees.list.includes(p)){ b.partner=null; b.mode='seek'; return; }
+    turnTo(b, Math.atan2(p.y-b.y, p.x-b.x), 6, dt);
+    if (p.arrived){ b.t -= dt; if (b.t<=0){
+      b.partner=null; b.unload=false; b.nectar=false; leave(b);                      // forager heads straight back out
+      p.partner=null; p.arrived=false; p.carrying=true;                                // receiver takes it to a cell
+      const k = bees.nearCell(sideLists.nectar.length ? sideLists.nectar : sideLists.empty, p, 8);
+      if (k>=0){ const [cx0,cy0]=bees.cellPos(k); const ang=Math.random()*6.28; p.cell=[cx0,cy0]; p.tx=cx0-Math.cos(ang)*1.7; p.ty=cy0-Math.sin(ang)*1.7; p.next='work'; p.work=4+Math.random()*4; }
+      else { p.tx=p.x; p.ty=Math.max(1,p.y-10); p.next='rest'; p.work=3; p.cell=null; }
+      p.mode='walk';
+    } }
+    return;
+  }
+  if (b.mode==='receive'){         // receiver walks over and stands head-to-head with the forager
+    if (!p || p.mode!=='handover' || !bees.list.includes(p)){ b.partner=null; b.mode='idle'; b.t=0; return; }
+    const tx = p.x + Math.cos(p.a)*3.3, ty = p.y + Math.sin(p.a)*3.3;
+    const d = approach(b, tx, ty, dt, 4.5);
+    turnTo(b, d>0.8 ? Math.atan2(ty-b.y, tx-b.x) : Math.atan2(p.y-b.y, p.x-b.x), 7, dt);
+    if (d < 0.3) b.arrived = true;
+  }
+}
 function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
   const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
@@ -1471,6 +1512,7 @@ function stepBee(b, dt){
     return;
   }
   if (b.mode==='dance' || b.mode==='follow') return;
+  if (b.mode==='seek' || b.mode==='handover' || b.mode==='receive'){ stepHandover(b, dt); return; }
   if (b.mode==='walk'){ moveBee(b, dt, b.gone ? 5.5 : b.kind==='d'?3:4.5); return; }
   b.t -= dt;
   if (b.mode==='rest'){ b.a += Math.sin(b.wob*1.3 + b.x)*0.006; if (isClustered()){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; } }
@@ -1569,6 +1611,11 @@ function drawComb(){
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
+  // trophallaxis: forager's tongue extended to the receiver
+  if (R > 3.5){ cx.strokeStyle='rgba(225,160,40,.9)'; cx.lineWidth=Math.max(1,R*0.12); cx.lineCap='round';
+    for (const b of bees.list){ if (b.mode!=='handover' || !b.partner || !b.partner.arrived) continue; const p=b.partner;
+      const hx=ox+(b.x+Math.cos(b.a)*1.5)*R, hy=oy+(b.y+Math.sin(b.a)*1.5)*R, px=ox+(p.x+Math.cos(p.a)*1.5)*R, py=oy+(p.y+Math.sin(p.a)*1.5)*R;
+      cx.beginPath(); cx.moveTo(hx,hy); cx.lineTo(px,py); cx.stroke(); } }
   // dance annotation
   for (const d of bees.dancers){
     const P = hive.patches[d.patch]; const theta = (P.az-hive.sunAz)*Math.PI/180;
