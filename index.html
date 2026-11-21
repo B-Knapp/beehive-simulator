@@ -1245,6 +1245,10 @@ const bees = {
   list: [], dancers: [], queen: null, scale: 1, emerging: [],
   reset(){ this.list=[]; this.dancers=[]; this.queen=null; this.emerging=[]; },
   randCell(arr){ if(!arr||!arr.length) return -1; return arr[(Math.random()*arr.length)|0]; },
+  // bees mostly work close to where they are: best of a few random candidates
+  nearCell(arr, b, tries=6){ if(!arr||!arr.length) return -1; let best=-1, bd=1e9;
+    for (let t=0;t<tries;t++){ const k=arr[(Math.random()*arr.length)|0], r=(k/COLS)|0, c=k%COLS; const d=Math.hypot(cellX(r,c)-b.x, cellY(r)-b.y); if (d<bd){bd=d;best=k;} }
+    return best; },
   cellPos(k){ const r=(k/COLS)|0, c=k%COLS; return [cellX(r,c), cellY(r)]; },
 };
 function sideWeight(side){
@@ -1298,22 +1302,33 @@ function clusterCenter(){
 }
 function chooseTask(b){
   const L = sideLists; if (!L) return;
-  const clustered = hive.Tout < 12;
+  const clustered = isClustered();
   let k = -1, work = 0;
   if (clustered && b.kind!=='q'){
     const [cx0,cy0] = clusterCenter(); const rad = Math.sqrt(bees.list.length)*1.35 + 4;
     const a = Math.random()*6.28, d = Math.sqrt(Math.random())*rad;
     b.tx = Math.max(1.5, Math.min(COMB_W-1.5, cx0 + Math.cos(a)*d)); b.ty = Math.max(1.5, Math.min(COMB_H-1.5, cy0 + Math.sin(a)*d*0.8)); b.mode='walk'; b.next='rest'; b.t=0; return;
   }
+  const near = arr => bees.nearCell(arr, b);
   switch(b.role){
-    case 'nurse': k = Math.random()<0.75 ? bees.randCell(L.larva) : bees.randCell(L.egg.length?L.egg:L.pollen); work = 2+Math.random()*5; break;
-    case 'cleaner': k = bees.randCell(L.dirty.length?L.dirty:L.empty); work = 4+Math.random()*6; break;
-    case 'storer': k = Math.random()<0.6 ? bees.randCell(L.nectar.length?L.nectar:L.empty) : bees.randCell(L.undrawn.length&&Math.random()<.5?L.undrawn:L.honey); work = 3+Math.random()*8; break;
+    case 'nurse': k = Math.random()<0.75 ? near(sideLists.larva) : near(sideLists.egg.length?sideLists.egg:sideLists.pollen); work = 3+Math.random()*8; break;
+    case 'cleaner': k = near(sideLists.dirty.length?sideLists.dirty:sideLists.empty); work = 5+Math.random()*10; break;
+    case 'storer': k = Math.random()<0.6 ? near(sideLists.nectar.length?sideLists.nectar:sideLists.empty) : near(sideLists.undrawn.length&&Math.random()<.5?sideLists.undrawn:sideLists.honey); work = 4+Math.random()*10; break;
     case 'guard': case 'forager': case 'drone': if (Math.random()<0.55){ b.mode='rest'; b.t = 3+Math.random()*10; return; } break;
   }
-  if (k<0){ const [x,y] = bees.cellPos((Math.random()*CPS)|0); b.tx=x; b.ty=y; b.next='rest'; b.work=2+Math.random()*4; }
+  if (k<0){ const a2=Math.random()*6.28, d2=3+Math.random()*10; b.tx=Math.max(1,Math.min(COMB_W-1,b.x+Math.cos(a2)*d2)); b.ty=Math.max(1,Math.min(COMB_H-1,b.y+Math.sin(a2)*d2)); b.next='rest'; b.work=2+Math.random()*5; b.cell=null; }
   else { const [x,y] = bees.cellPos(k); const ang = Math.random()*6.28; b.cell=[x,y]; b.tx = x - Math.cos(ang)*1.7; b.ty = y - Math.sin(ang)*1.7; b.next='work'; b.work=work; }
   b.mode='walk';
+}
+// a resting winter cluster only forms in cold, broodless periods; with brood the nest stays at ~34 °C and work goes on
+function isClustered(){ return hive.Tout < 10 && (hive.broodTotal||0) < 1500; }
+function midTask(b){
+  chooseTask(b);
+  if (b.mode==='walk'){
+    if (b.next==='work' && b.cell && Math.random()<0.45){   // already head-down in her cell
+      b.x=b.tx; b.y=b.ty; b.mode='work'; b.t=(0.2+0.8*Math.random())*(b.work||4); b.a=Math.atan2(b.cell[1]-b.y, b.cell[0]-b.x);
+    } else b.a = Math.atan2(b.ty-b.y, b.tx-b.x);                // already on her way
+  } else if (b.mode==='rest') b.t *= 0.2+0.8*Math.random();  // somewhere into her rest
 }
 function updateBees(dt){
   if (!sideLists) return;
@@ -1324,8 +1339,9 @@ function updateBees(dt){
   // sync counts gradually
   let cw=0, cd=0; for (const b of bees.list){ if (b.gone) continue; if(b.kind==='w') cw++; else if (b.kind==='d') cd++; }
   if (bees.list.length===0){          // opening a frame: the bees are already there
-    for (let k=0;k<nW;k++) bees.list.push(newSprite('w'));
-    for (let k=0;k<nD;k++) bees.list.push(newSprite('d'));
+    // ...and already busy: each one is caught part-way through a task
+    for (let k=0;k<nW;k++){ const b=newSprite('w'); midTask(b); bees.list.push(b); }
+    for (let k=0;k<nD;k++){ const b=newSprite('d'); midTask(b); bees.list.push(b); }
     bees.emerging.length = 0; cw = nW; cd = nD;
   }
   // newly emerged bees appear in the very cells they hatched from
@@ -1399,7 +1415,8 @@ function stepBee(b, dt){
   if (b.mode==='dance' || b.mode==='follow') return;
   if (b.mode==='walk'){ moveBee(b, dt, b.gone ? 5.5 : b.kind==='d'?3:4.5); return; }
   b.t -= dt;
-  if (b.mode==='rest' && hive.Tout<12){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; }
+  if (b.mode==='rest'){ b.a += Math.sin(b.wob*1.3 + b.x)*0.006; if (isClustered()){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; } }
+  else if (b.mode==='work'){ b.a += Math.sin(b.wob*2.1 + b.y)*0.004; }
   if (b.t <= 0) chooseTask(b);
 }
 // waggle dances
