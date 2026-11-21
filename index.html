@@ -1770,7 +1770,8 @@ function stripes(ctx, kind){
 // Origin: middle of the body; feet reach y = +BEE_SIDE_H body units. Facing +x; dir = -1 mirrors.
 const BEE_SIDE_H = 1.0;
 function drawBeeSide(ctx, x, y, dir, s, kind, opt){
-  ctx.save(); ctx.translate(x,y); ctx.scale(s*dir, s); ctx.rotate(-(opt.pitch||0)*dir*dir);
+  ctx.save(); ctx.translate(x,y); ctx.scale(s*dir, s);
+  if (opt.fly) ctx.rotate(-0.5 + 0.35*(opt.pitch||0));   // in flight: nose up ~30°, abdomen hanging below
   const Q = kind==='q', Dr = kind==='d', fly = opt.fly, detail = s > 3.2, ph = (opt.step||0)*9;
   const ink = '#24170b';
   // legs: three on the near side (the far three are hidden behind the body), stepping in a tripod gait
@@ -1778,7 +1779,9 @@ function drawBeeSide(ctx, x, y, dir, s, kind, opt){
     ctx.strokeStyle = ink; ctx.lineWidth = 0.11; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
     const hips = [[0.62, 0.18], [0.3, 0.3], [-0.02, 0.28]];
     hips.forEach(([hx, hy], k) => {
-      if (fly){ ctx.moveTo(hx, hy); ctx.lineTo(hx - 0.25, hy + 0.45); ctx.lineTo(hx - 0.55 - k*0.1, hy + 0.65); return; }   // legs trail in flight
+      if (fly){ const L = [0.55, 0.75, 1.05][k], sw = Math.sin(ph*0.3 + k)*0.05;   // legs hang down (counter-rotated so they dangle)
+        const ex = hx - 0.15 - k*0.12 + sw, ey = hy + L;
+        ctx.moveTo(hx, hy); ctx.lineTo(hx + (k===0 ? 0.2 : -0.05), hy + L*0.5); ctx.lineTo(ex, ey); return; }
       const sw = Math.sin(ph + (k % 2) * Math.PI) * 0.22, lift = Math.max(0, Math.cos(ph + (k % 2) * Math.PI)) * 0.12;
       const fx = hx + (k===0 ? 0.35 : k===1 ? 0.05 : -0.45) + sw;
       ctx.moveTo(hx, hy); ctx.lineTo((hx + fx) / 2 + (k===2 ? -0.15 : 0.1), hy + 0.38); ctx.lineTo(fx, BEE_SIDE_H - lift);
@@ -1792,8 +1795,9 @@ function drawBeeSide(ctx, x, y, dir, s, kind, opt){
   if (detail){ ctx.fillStyle = 'rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax + 0.1, -ary*0.45, arx*0.75, ary*0.28, 0.1, 0, 7); ctx.fill(); }
   if (opt.pollen){   // pollen load on the hind leg
     const pr = 0.34 * (opt.load ?? 1);
-    ctx.fillStyle = opt.pollen; ctx.beginPath(); ctx.ellipse(-0.42, 0.62, pr*1.1, pr*0.85, -0.3, 0, 7); ctx.fill();
-    if (detail){ ctx.fillStyle = 'rgba(255,255,235,.4)'; ctx.beginPath(); ctx.ellipse(-0.5, 0.52, pr*0.45, pr*0.25, -0.3, 0, 7); ctx.fill(); }
+    const px = fly ? -0.2 : -0.42, py = fly ? 0.95 : 0.62;
+    ctx.fillStyle = opt.pollen; ctx.beginPath(); ctx.ellipse(px, py, pr*1.1, pr*0.85, fly ? 0.4 : -0.3, 0, 7); ctx.fill();
+    if (detail){ ctx.fillStyle = 'rgba(255,255,235,.4)'; ctx.beginPath(); ctx.ellipse(px-0.08, py-0.1, pr*0.45, pr*0.25, -0.3, 0, 7); ctx.fill(); }
   }
   // thorax, fuzzy
   ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c'; ctx.beginPath(); ctx.ellipse(0.32, -0.04, 0.6, 0.52, 0, 0, 7); ctx.fill();
@@ -1818,8 +1822,18 @@ function drawBeeSide(ctx, x, y, dir, s, kind, opt){
   const wl = Q ? 1.0 : Dr ? 1.5 : 1.2;
   ctx.fillStyle = fly ? 'rgba(240,246,255,.30)' : 'rgba(225,234,250,.4)'; ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 0.05;
   if (fly){
-    const flap = Math.sin(performance.now()/1000*90) * 0.25;
-    for (const [rot, k] of [[-1.05 + flap, 1], [-0.6 - flap, 0.8]]){ ctx.beginPath(); ctx.ellipse(0.2 + Math.cos(rot)*wl*0.85, -0.35 + Math.sin(rot)*wl*0.85, wl*k, 0.42, rot, 0, 7); ctx.fill(); if (detail) ctx.stroke(); }
+    // ~230 beats a second is a blur: draw the stroke as a few faint ghost positions plus one sharper wing
+    const t = performance.now()/1000, root = [0.25, -0.42];
+    const wing = (ang, len, wid, a) => { ctx.save(); ctx.translate(root[0], root[1]); ctx.rotate(ang);
+      ctx.fillStyle = `rgba(225,230,240,${a})`; ctx.beginPath(); ctx.ellipse(len*0.5, 0, len*0.5, wid, 0, 0, 7); ctx.fill();
+      if (a > 0.2){ ctx.strokeStyle='rgba(80,80,95,.4)'; ctx.lineWidth=0.04; ctx.stroke(); }
+      if (detail && a > 0.2){ ctx.strokeStyle='rgba(60,45,30,.35)'; ctx.lineWidth=0.035; ctx.beginPath();
+        ctx.moveTo(0,0); ctx.lineTo(len*0.92, -wid*0.15); ctx.moveTo(len*0.15, wid*0.35); ctx.lineTo(len*0.75, wid*0.25); ctx.moveTo(len*0.45, -wid*0.6); ctx.lineTo(len*0.6, wid*0.5); ctx.stroke(); }
+      ctx.restore(); };
+    for (const off of [-0.45, -0.15, 0.15, 0.45]) wing(-1.95 + off, wl*1.55, 0.4, 0.1);          // blur of the beat
+    const beat = Math.sin(t*95) * 0.3;
+    wing(-2.2 + beat*0.6, wl*1.15, 0.3, 0.4);                                                 // hindwing
+    wing(-1.85 + beat, wl*1.6, 0.42, 0.5);                                                      // forewing
   } else {
     ctx.beginPath(); ctx.ellipse(-0.55, -0.5, wl, 0.22, 0.08, 0, 7); ctx.fill(); if (detail) ctx.stroke();
   }
