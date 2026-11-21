@@ -251,6 +251,20 @@ class Hive {
     }
     return false;
   }
+  // How unsuitable a cell is for worker brood because it is cool: the lowest rows of the bottom box (furthest from
+  // the rising heat of the cluster, nearest the cold air at the floor) and the entrance end of those rows. Bees keep
+  // worker brood in the warm core; the bottom edge holds drone comb, pollen or stays empty. Colder weather widens it.
+  coolPenalty(i) {
+    const k = i % CPS, r = (k / COLS) | 0, c = k % COLS, up = ROWS - 1 - r, b = this.boxOf(i);
+    const cold = this.Tout < 10 ? 1 : this.Tout < 20 ? 0.92 : 0.85;
+    if (b === 0) {
+      let p = up < 6 ? Math.min(1, (6 - up) / 4) : 0;                      // bottom ~3 cm of the comb
+      if (c < 14 && up < 16) p = Math.max(p, ((16 - up) / 16) * ((14 - c) / 14));   // entrance end
+      return Math.min(0.97, p * cold);
+    }
+    if (b === 1 && up < 2) return 0.25 * cold;                              // bottom edge of the upper box (cluster spans the gap)
+    return 0;
+  }
   dist3(i, P) { const dx = this.X3[i] - P.x, dy = (this.Y3[i] - P.y) * 1.15, dz = this.Z3[i] - P.z; return Math.sqrt(dx * dx + dy * dy + dz * dz); }
   hash(i) { let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
 
@@ -856,7 +870,7 @@ class Hive {
           if (!this.drawn[i] || this.droneCell[i] || (this.excluder && this.boxOf(i) >= 2)) continue;
           let score;
           if (s === ST.POLLEN && this.pol[i] < POLLEN_CAP_W - 1) score = 2 + R();
-          else if (s === ST.EMPTY) score = 1 + R();
+          else if (s === ST.EMPTY) { if (this.nBrood > 0 && this.broodDensity(i) > 0.7) continue; score = 1 + R(); }   // gaps inside the brood nest are left for the queen
           else continue;
           if (score > bestScore) { bestScore = score; best = i; }
         }
@@ -971,7 +985,7 @@ class Hive {
         if (st[j] !== ST.EMPTY || !this.drawn[j] || (this.excluder && this.boxOf(j) >= 2)) continue;
         if (!(this.nBrood < 50 || this.sideStats[side * 8] < 20 || this.hasBroodNear(j))) continue;
         if (this.droneCell[j] || allDrone) { if (nd > 0) { st[j] = ST.EGG; this.caste[j] = 1; this.age[j] = 0; nd--; laid++; laidHere = true; i = j; } }
-        else if (nw > 0) { st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++; laidHere = true; i = j; }
+        else if (nw > 0 && R() >= this.coolPenalty(j)) { st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++; laidHere = true; i = j; }
       }
       if (laidHere) { fails = 0; continue; }
       // otherwise step on: random direction, drifting toward the brood when she is away from it
@@ -1735,6 +1749,10 @@ function edgePoint(){
   if (r < bottomBias+0.15) return [1+Math.random()*(COMB_W-2), 0.5];
   return [Math.random()<0.5 ? 0.5 : COMB_W-0.5, 1+Math.random()*(COMB_H-2)];
 }
+// the "dance floor": the comb area just inside the entrance (left/front end, lower part of the bottom box), where
+// returning foragers land and the crowd of bees is densest
+const DANCE_X0 = 3, DANCE_X1 = () => COMB_W*0.42, DANCE_Y0 = () => COMB_H*0.5, DANCE_Y1 = () => COMB_H-3;
+function entrancePoint(){ return [DANCE_X0 + Math.pow(Math.random(),1.4)*(DANCE_X1()-DANCE_X0), DANCE_Y0() + Math.random()*(DANCE_Y1()-DANCE_Y0())]; }
 function enteringSprite(kind){
   const b = newSprite(kind); const [x,y] = edgePoint(); b.x=x; b.y=y;
   const [tx,ty] = bees.cellPos((Math.random()*CPS)|0);
@@ -1768,7 +1786,10 @@ function chooseTask(b){
     case 'nurse': k = Math.random()<0.75 ? near(sideLists.larva) : near(sideLists.egg.length?sideLists.egg:sideLists.pollen); work = 3+Math.random()*8; break;
     case 'cleaner': k = near(sideLists.dirty.length?sideLists.dirty:sideLists.empty); work = 5+Math.random()*10; break;
     case 'storer': k = Math.random()<0.6 ? near(sideLists.nectar.length?sideLists.nectar:sideLists.empty) : near(sideLists.undrawn.length&&Math.random()<.5?sideLists.undrawn:sideLists.honey); work = 4+Math.random()*10; break;
-    case 'guard': case 'forager': case 'drone': if (Math.random()<0.55){ b.mode='rest'; b.t = 3+Math.random()*10; return; } break;
+    case 'guard': case 'forager':
+      if (sel.box===0 && Math.random()<0.6){ const [ex,ey]=entrancePoint(); b.tx=ex; b.ty=ey; b.mode='walk'; b.next='rest'; b.work=3+Math.random()*8; b.cell=null; return; }
+      if (Math.random()<0.55){ b.mode='rest'; b.t = 3+Math.random()*10; return; } break;
+    case 'drone': if (Math.random()<0.55){ b.mode='rest'; b.t = 3+Math.random()*10; return; } break;
   }
   if (k<0){ const a2=Math.random()*6.28, d2=3+Math.random()*10; b.tx=Math.max(1,Math.min(COMB_W-1,b.x+Math.cos(a2)*d2)); b.ty=Math.max(1,Math.min(COMB_H-1,b.y+Math.sin(a2)*d2)); b.next='rest'; b.work=2+Math.random()*5; b.cell=null; }
   else { const [x,y] = bees.cellPos(k); const ang = Math.random()*6.28; b.cell=[x,y]; b.tx = x - Math.cos(ang)*1.7; b.ty = y - Math.sin(ang)*1.7; b.next='work'; b.work=work; b.claim=k; bees.claimed.add(k); }
@@ -1788,7 +1809,7 @@ function returningForager(){
   const pick = pickFlyingPatch(); if (!pick) return null;
   const P = hive.patches[pick.p];
   const b = newSprite('w'); b.origin='entrance'; b.role='forager'; b.forager=true;
-  b.x = 2+Math.random()*(COMB_W-4); b.y = COMB_H-0.5;
+  b.x = 1.5 + Math.pow(Math.random(), 1.6)*(COMB_W*0.45); b.y = COMB_H-0.5;
   b.dustCol = P.col;
   if (pick.pollen){ b.pollen = P.col; b.load = 0.75+Math.random()*0.35; b.dust = 0.6+Math.random()*0.4;
     // head for a bee-bread cell (or an empty one near the brood) to kick the loads off
@@ -1930,10 +1951,17 @@ function stepHandover(b, dt){
 function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
   const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
-  if (d < 0.4){ b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); return; }
-  const want = Math.atan2(dy,dx); let da = want-b.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
-  b.a += Math.max(-6*dt, Math.min(6*dt, da)) + (Math.random()-0.5)*0.15;
-  const v = speed*dt*(0.6+0.4*Math.cos(da));
+  const arrive = () => { b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
+  if (d < 0.4){ arrive(); return; }
+  const want = Math.atan2(dy,dx);
+  if (d < 1.6){   // last step: walk straight onto the spot (no orbiting around it)
+    const s = Math.min(d, speed*dt); b.x += dx/d*s; b.y += dy/d*s; turnTo(b, want, 10, dt);
+    if (d - s < 0.4) arrive();
+    return;
+  }
+  let da = want-b.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+  b.a += Math.max(-6*dt, Math.min(6*dt, da)) + (Math.random()-0.5)*0.1;
+  const v = speed*dt*Math.max(0.1, Math.cos(da));   // a bee facing away pivots almost on the spot instead of circling
   b.x += Math.cos(b.a)*Math.min(v,d); b.y += Math.sin(b.a)*Math.min(v,d);
   b.x = Math.max(0.5, Math.min(COMB_W-0.5, b.x)); b.y = Math.max(0.5, Math.min(COMB_H-0.5, b.y));
 }
@@ -1958,6 +1986,7 @@ function stepBee(b, dt){
   }
   if (b.dust > 0 && !b.pollen) b.dust = Math.max(0, b.dust - dt*0.02);   // grooming
 }
+function far0(b, x, y){ return Math.hypot(x-b.x, y-b.y); }
 // waggle dances
 function updateDances(dt, side){
   const onFloor = sel.box===0;
@@ -1973,20 +2002,23 @@ function updateDances(dt, side){
     // pick a spot on the dance floor (lower comb near the entrance) away from other dances
     let fx=0, fy=0, ok=false;
     for (let tries=0; tries<8 && !ok; tries++){
-      fx = 10+Math.random()*(COMB_W-20); fy = COMB_H*0.58+Math.random()*COMB_H*0.32;
-      ok = bees.dancers.every(o=>Math.hypot(o.cx-fx,o.cy-fy)>14);
+      [fx, fy] = entrancePoint(); fx = Math.max(8, fx); fy = Math.min(COMB_H-6, Math.max(COMB_H*0.5, fy));
+      ok = bees.dancers.every(o=>Math.hypot(o.cx-fx,o.cy-fy)>11);
     }
     const b = ok ? nearestFree(fx, fy, 30) : null;
     if (b){
       const P = hive.patches[p];
       b.mode='dance'; b.role='forager'; b.pollen = pol ? P.col : null; b.load = 0.9; b.dust = pol ? 0.7 : 0.2; b.dustCol = P.col;
       // the dance is centred just ahead of where the forager already is; she walks onto it
-      const cx0 = Math.max(6, Math.min(COMB_W-6, b.x)), cy0 = Math.max(COMB_H*0.5, Math.min(COMB_H-5, b.y));
+      const cx0 = Math.max(7, Math.min(DANCE_X1()+6, b.x)), cy0 = Math.max(COMB_H*0.5, Math.min(COMB_H-6, b.y));
       const d = { bee:b, patch:p, pol, cx: cx0, cy: cy0, phase:'approach', t:0, circ: 0, theta: (P.az - hive.sunAz)*Math.PI/180,
         left: 6 + Math.random()*12, dir:1, followers:[] };
       bees.dancers.push(d);
-      const nf = 3+(Math.random()*3|0);
-      for (let k=0;k<nf;k++){ const f = nearestFree(cx0, cy0, 16, b); if (f){ f.mode='follow'; d.followers.push(f); } }
+      const nf = 4+(Math.random()*5|0);
+      for (let k=0;k<nf;k++){ const f = nearestFree(cx0, cy0, 20, b); if (f){ f.mode='follow'; d.followers.push(f); } }
+      // places around her, behind and to both sides (followers keep antennae on her as she turns)
+      const slots=[Math.PI, Math.PI*0.78, -Math.PI*0.78, Math.PI*0.55, -Math.PI*0.55, Math.PI*0.32, -Math.PI*0.32, Math.PI*0.9];
+      d.followers.forEach((fb,k)=>{ fb.slot = slots[k%slots.length] + (Math.random()-0.5)*0.2; fb.slotR = 2.5+Math.random()*0.5; });
     }
   }
   for (const d of bees.dancers){
@@ -2022,11 +2054,12 @@ function updateDances(dt, side){
       turnTo(b, Math.atan2(vy, vx), 14, dt); b.buzz=false;
       if (f>=1){ d.phase='run'; d.t=0; d.circ++; }
     }
-    d.followers.forEach((fb,k)=>{
-      const sa = (k/d.followers.length)*Math.PI*1.4 + Math.PI*0.8;
-      const tx = d.cx - ux*(runLen*0.2) + Math.cos(sa + Math.atan2(uy,ux))*2.6, ty = d.cy - uy*(runLen*0.2) + Math.sin(sa + Math.atan2(uy,ux))*2.6;
-      const far = approach(fb, tx, ty, dt, 4.5);
-      turnTo(fb, far>1 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(b.y-fb.y, b.x-fb.x), 7, dt);
+    // followers crowd round her and move with her, staying in antennal contact
+    d.hd = d.hd==null ? b.a : d.hd + Math.atan2(Math.sin(b.a-d.hd), Math.cos(b.a-d.hd))*Math.min(1, dt*4);
+    d.followers.forEach(fb=>{
+      const ang = d.hd + fb.slot, tx = b.x + Math.cos(ang)*fb.slotR, ty = b.y + Math.sin(ang)*fb.slotR;
+      const far = approach(fb, tx, ty, dt, far0(fb, tx, ty) > 3 ? 5 : 9);
+      turnTo(fb, far>1.5 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(b.y-fb.y, b.x-fb.x), 9, dt);
     });
     if (d.phase!=='approach') d.left -= dt;
     if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; b.pollen=null; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
@@ -2056,6 +2089,7 @@ function drawComb(){
       const k=qc.idx%CPS, r=(k/COLS)|0, col=k%COLS; arcs(ox+cellX(r,col)*R, oy+(cellY(r)+5)*R, 'rgba(255,190,120,.9)', 'quack'); }
     if (bees.queen && hive.queen.virgin) arcs(ox+bees.queen.x*R, oy+bees.queen.y*R, 'rgba(255,240,150,.95)', 'toot');
   }
+  if (sel.box===0 && R>1.5){ cx.font='11px system-ui'; cx.fillStyle='rgba(240,220,170,.75)'; cx.fillText('◀ entrance end (dance floor)', ox, oy+COMB_H*R+R*3.4+10); }
   // trophallaxis: forager's tongue extended to the receiver
   if (R > 3.5){ cx.strokeStyle='rgba(225,160,40,.9)'; cx.lineWidth=Math.max(1,R*0.12); cx.lineCap='round';
     for (const b of bees.list){ if (b.mode!=='handover' || !b.partner || !b.partner.arrived) continue; const p=b.partner;
@@ -2078,7 +2112,7 @@ function drawComb(){
     let rel = ((P.az - hive.sunAz + 540) % 360) - 180;
     di.innerHTML = `💃 <b>${d.pol?'Pollen':'Nectar'} dance → ${P.name}</b>, ${P.dist.toFixed(1)} km · ${P.dist<0.15?'round dance (close by)':`waggle run ≈ ${(0.45+P.dist*0.9).toFixed(1)} s`} · ${Math.abs(rel).toFixed(0)}° ${rel>=0?'right':'left'} of vertical = ${Math.abs(rel).toFixed(0)}° ${rel>=0?'clockwise':'counter-clockwise'} from the sun` + (bees.dancers.length>1?` <span class="sub">(+${bees.dancers.length-1} more)</span>`:'');
     di.style.display='block';
-  } else if (sel.box===0 && hive.canFly) { di.innerHTML = '<span class="sub">Dances happen on the lower brood frames near the entrance when foragers find profitable flowers.</span>'; di.style.display='block'; }
+  } else if (sel.box===0 && hive.canFly) { di.innerHTML = '<span class="sub">Dances happen on the dance floor just inside the entrance (lower front of the bottom-box combs) when foragers find profitable flowers.</span>'; di.style.display='block'; }
   else di.style.display='none';
 }
 // zoom / pan / hover

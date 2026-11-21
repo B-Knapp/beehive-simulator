@@ -130,6 +130,20 @@ class Hive {
     }
     return false;
   }
+  // How unsuitable a cell is for worker brood because it is cool: the lowest rows of the bottom box (furthest from
+  // the rising heat of the cluster, nearest the cold air at the floor) and the entrance end of those rows. Bees keep
+  // worker brood in the warm core; the bottom edge holds drone comb, pollen or stays empty. Colder weather widens it.
+  coolPenalty(i) {
+    const k = i % CPS, r = (k / COLS) | 0, c = k % COLS, up = ROWS - 1 - r, b = this.boxOf(i);
+    const cold = this.Tout < 10 ? 1 : this.Tout < 20 ? 0.92 : 0.85;
+    if (b === 0) {
+      let p = up < 6 ? Math.min(1, (6 - up) / 4) : 0;                      // bottom ~3 cm of the comb
+      if (c < 14 && up < 16) p = Math.max(p, ((16 - up) / 16) * ((14 - c) / 14));   // entrance end
+      return Math.min(0.97, p * cold);
+    }
+    if (b === 1 && up < 2) return 0.25 * cold;                              // bottom edge of the upper box (cluster spans the gap)
+    return 0;
+  }
   dist3(i, P) { const dx = this.X3[i] - P.x, dy = (this.Y3[i] - P.y) * 1.15, dz = this.Z3[i] - P.z; return Math.sqrt(dx * dx + dy * dy + dz * dz); }
   hash(i) { let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
 
@@ -735,7 +749,7 @@ class Hive {
           if (!this.drawn[i] || this.droneCell[i] || (this.excluder && this.boxOf(i) >= 2)) continue;
           let score;
           if (s === ST.POLLEN && this.pol[i] < POLLEN_CAP_W - 1) score = 2 + R();
-          else if (s === ST.EMPTY) score = 1 + R();
+          else if (s === ST.EMPTY) { if (this.nBrood > 0 && this.broodDensity(i) > 0.7) continue; score = 1 + R(); }   // gaps inside the brood nest are left for the queen
           else continue;
           if (score > bestScore) { bestScore = score; best = i; }
         }
@@ -850,7 +864,7 @@ class Hive {
         if (st[j] !== ST.EMPTY || !this.drawn[j] || (this.excluder && this.boxOf(j) >= 2)) continue;
         if (!(this.nBrood < 50 || this.sideStats[side * 8] < 20 || this.hasBroodNear(j))) continue;
         if (this.droneCell[j] || allDrone) { if (nd > 0) { st[j] = ST.EGG; this.caste[j] = 1; this.age[j] = 0; nd--; laid++; laidHere = true; i = j; } }
-        else if (nw > 0) { st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++; laidHere = true; i = j; }
+        else if (nw > 0 && R() >= this.coolPenalty(j)) { st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++; laidHere = true; i = j; }
       }
       if (laidHere) { fails = 0; continue; }
       // otherwise step on: random direction, drifting toward the brood when she is away from it
