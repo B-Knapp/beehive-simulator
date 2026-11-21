@@ -1218,7 +1218,18 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
   ctx.fillStyle = stripes(ctx, kind);
   ctx.beginPath(); ctx.ellipse(ax, 0, arx, ary, 0, 0, 7); ctx.fill();
   if (detail){ ctx.fillStyle='rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax+0.1,-ary*0.35,arx*0.75,ary*0.3,0,0,7); ctx.fill(); }
-  if (opt.pollen){ ctx.fillStyle=opt.pollen; ctx.beginPath(); ctx.arc(-0.35,0.78,0.34,0,7); ctx.arc(-0.35,-0.78,0.34,0,7); ctx.fill(); }
+  if (opt.pollen){   // packed pollen loads in the corbiculae ("pollen baskets") of the hind legs
+    const pr = 0.36*(opt.load ?? 1);
+    for (const sg of [1,-1]){
+      ctx.fillStyle = opt.pollen; ctx.beginPath(); ctx.ellipse(-0.62, sg*0.98, pr*1.15, pr*0.85, sg*0.35, 0, 7); ctx.fill();
+      if (detail){
+        ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(-0.55, sg*1.08, pr*0.8, pr*0.45, sg*0.35, 0, 7); ctx.fill();
+        ctx.fillStyle='rgba(255,255,235,.45)'; ctx.beginPath(); ctx.ellipse(-0.72, sg*0.9, pr*0.45, pr*0.25, sg*0.35, 0, 7); ctx.fill();
+        for (let q=0;q<5;q++){ ctx.fillStyle = q&1 ? 'rgba(0,0,0,.18)' : 'rgba(255,255,220,.3)'; ctx.fillRect(-0.62+(hsh(q*7+sg)-0.5)*pr*1.6, sg*0.98+(hsh(q*13+sg)-0.5)*pr*1.1, 0.07, 0.07); }
+      }
+    }
+  }
+
   // thorax
   ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c';
   ctx.beginPath(); ctx.ellipse(0.3,0,0.62,0.56,0,0,7); ctx.fill();
@@ -1228,6 +1239,20 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
   ctx.fillStyle='#120d08';
   if (Dr){ ctx.beginPath(); ctx.ellipse(1.06,0.24,0.36,0.27,0.3,0,7); ctx.ellipse(1.06,-0.24,0.36,0.27,-0.3,0,7); ctx.fill(); }
   else { ctx.beginPath(); ctx.ellipse(1.08,0.3,0.22,0.13,0.2,0,7); ctx.ellipse(1.08,-0.3,0.22,0.13,-0.2,0,7); ctx.fill(); }
+  if (opt.dust > 0.02 && detail){   // loose pollen caught in the body hairs
+    ctx.fillStyle = mixC(opt.dustCol || opt.pollen || '#f0c030', '#fff4c0', 0.25);
+    const seed = opt.seed|0, n = Math.round(70*opt.dust);
+    for (let q=0;q<n;q++){
+      const u = hsh(seed+q*3), v = hsh(seed+q*7), w = hsh(seed+q*11);
+      let px, py;
+      if (u < 0.5){ px = -1.1 + (v-0.5)*2.1; py = (w-0.5)*1.25*Math.sqrt(Math.max(0, 1-Math.pow((px+1.1)/1.15,2))); }      // abdomen
+      else if (u < 0.78){ const a=v*6.28, r=Math.sqrt(w)*0.62; px = 0.3+Math.cos(a)*r; py = Math.sin(a)*r*0.9; }              // thorax
+      else if (u < 0.88){ px = 1.0+(v-0.5)*0.5; py = (w-0.5)*0.8; }                                                         // head
+      else { const sg = w<0.5?1:-1, t=v; px = 0.3-0.9*t; py = sg*(0.3+0.65*t); }                                            // legs
+      ctx.globalAlpha = 0.55+0.45*hsh(seed+q); ctx.beginPath(); ctx.arc(px, py, 0.05+0.06*hsh(seed+q*5), 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
   // wings, folded flat over the abdomen; blurred & raised while waggling
   const wl = Q ? 1.05 : Dr ? 1.55 : 1.2, buzz = opt.buzz;
   ctx.fillStyle = buzz ? 'rgba(230,238,255,.16)' : 'rgba(225,234,250,.30)';
@@ -1273,7 +1298,7 @@ function pickRole(){
 }
 function newSprite(kind){
   const [x,y] = bees.cellPos((Math.random()*CPS)|0);
-  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null };
+  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null, seed: (Math.random()*1e6)|0 };
 }
 // a point on the comb's edge: bees cross between frames over the top/sides/bottom, and
 // reach the brood box from the entrance below
@@ -1322,6 +1347,32 @@ function chooseTask(b){
 }
 // a resting winter cluster only forms in cold, broodless periods; with brood the nest stays at ~34 °C and work goes on
 function isClustered(){ return hive.Tout < 10 && (hive.broodTotal||0) < 1500; }
+// returning foragers: pick a patch in proportion to the foragers working it right now
+function pickFlyingPatch(){
+  let tN=0, tP=0; for (let p=0;p<hive.patches.length;p++){ tN+=hive.flyN[p]; tP+=hive.flyP[p]; }
+  if (tN+tP===0) return null;
+  let x = Math.random()*(tN+tP);
+  for (let p=0;p<hive.patches.length;p++){ x-=hive.flyN[p]; if (x<=0) return { p, pollen:false }; x-=hive.flyP[p]; if (x<=0) return { p, pollen:true }; }
+  return null;
+}
+function returningForager(){
+  const pick = pickFlyingPatch(); if (!pick) return null;
+  const P = hive.patches[pick.p];
+  const b = newSprite('w'); b.origin='entrance'; b.role='forager'; b.forager=true;
+  b.x = 2+Math.random()*(COMB_W-4); b.y = COMB_H-0.5;
+  b.dustCol = P.col;
+  if (pick.pollen){ b.pollen = P.col; b.load = 0.75+Math.random()*0.35; b.dust = 0.6+Math.random()*0.4;
+    // head for a bee-bread cell (or an empty one near the brood) to kick the loads off
+    const k = bees.nearCell(sideLists.pollen.length ? sideLists.pollen : sideLists.empty, b, 8);
+    if (k>=0){ const [cx0,cy0]=bees.cellPos(k); const ang=Math.random()*6.28; b.cell=[cx0,cy0]; b.tx=cx0-Math.cos(ang)*1.7; b.ty=cy0-Math.sin(ang)*1.7; b.next='work'; b.work=4+Math.random()*4; b.unload=true; }
+    else { b.tx=b.x; b.ty=b.y-8; b.next='work'; b.work=3; b.unload=true; }
+  } else {   // nectar forager: lightly dusted, finds a receiver bee nearby to hand over her load
+    b.dust = Math.random()<0.6 ? 0.15+Math.random()*0.3 : 0;
+    b.tx = Math.max(2, Math.min(COMB_W-2, b.x + (Math.random()-0.5)*16)); b.ty = COMB_H - 4 - Math.random()*14; b.cell=null; b.next='work'; b.work=3+Math.random()*4; b.unload=true;
+  }
+  b.a = Math.atan2(b.ty-b.y, b.tx-b.x); b.mode='walk';
+  return b;
+}
 function midTask(b){
   chooseTask(b);
   if (b.mode==='walk'){
@@ -1352,11 +1403,18 @@ function updateBees(dt){
     const b = newSprite('w'); b.x=x; b.y=y; b.role='cleaner'; b.mode='work'; b.t=2+Math.random()*3; b.a=Math.random()*6.28;
     bees.list.push(b); cw++;
   }
+  // steady traffic of foragers coming home through the entrance below the bottom box
+  if (sel.box===0 && hive.canFly && !isClustered()){
+    const sp = SPEEDS[speedIdx][1];
+    const rate = sp===0 ? 0 : Math.min(3, Math.max(0.35, sp/600)) * Math.min(1, hive.outCount()/800);
+    bees._traffic = (bees._traffic||0) + rate*dt;
+    while (bees._traffic >= 1){ bees._traffic -= 1; const f = returningForager(); if (f){ bees.list.push(f); cw++; } }
+  }
   const inW = Math.min(4, nW-cw), inD = Math.min(2, nD-cd);
   for (let k=0;k<inW;k++) if (Math.random()<0.5) bees.list.push(enteringSprite('w'));
   for (let k=0;k<inD;k++) if (Math.random()<0.3) bees.list.push(enteringSprite('d'));
   const outW = Math.min(4, cw - nW - 2), outD = Math.min(2, cd - nD);
-  for (let k=0;k<outW;k++){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) leave(z); }
+  for (let k=0;k<outW;k++){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && !b.unload && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) leave(z); }
   for (let k=0;k<outD;k++){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z) leave(z); }
   bees.list = bees.list.filter(b=>b.mode!=='exit');
   // role refresh slowly
@@ -1387,7 +1445,7 @@ function turnTo(b, ang, rate, dt){
   let da=ang-b.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
   b.a += Math.max(-rate*dt, Math.min(rate*dt, da));
 }
-const isFree = z => z.kind==='w' && !z.gone && (z.mode==='rest'||z.mode==='idle'||z.mode==='walk');
+const isFree = z => z.kind==='w' && !z.gone && !z.unload && (z.mode==='rest'||z.mode==='idle'||z.mode==='walk');
 function nearestFree(x, y, maxD, exclude){
   let best=null, bd=maxD;
   for (const z of bees.list){ if (!isFree(z) || z===exclude) continue; const d=Math.hypot(z.x-x,z.y-y); if (d<bd){bd=d;best=z;} }
@@ -1417,7 +1475,11 @@ function stepBee(b, dt){
   b.t -= dt;
   if (b.mode==='rest'){ b.a += Math.sin(b.wob*1.3 + b.x)*0.006; if (isClustered()){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; } }
   else if (b.mode==='work'){ b.a += Math.sin(b.wob*2.1 + b.y)*0.004; }
-  if (b.t <= 0) chooseTask(b);
+  if (b.t <= 0){
+    if (b.unload){ b.unload=false; b.pollen=null; if (b.forager){ leave(b); return; } }
+    chooseTask(b);
+  }
+  if (b.dust > 0 && !b.pollen) b.dust = Math.max(0, b.dust - dt*0.02);   // grooming
 }
 // waggle dances
 function updateDances(dt, side){
@@ -1440,7 +1502,7 @@ function updateDances(dt, side){
     const b = ok ? nearestFree(fx, fy, 30) : null;
     if (b){
       const P = hive.patches[p];
-      b.mode='dance'; b.role='forager'; b.pollen = pol ? P.col : null;
+      b.mode='dance'; b.role='forager'; b.pollen = pol ? P.col : null; b.load = 0.9; b.dust = pol ? 0.7 : 0.2; b.dustCol = P.col;
       // the dance is centred just ahead of where the forager already is; she walks onto it
       const cx0 = Math.max(6, Math.min(COMB_W-6, b.x)), cy0 = Math.max(COMB_H*0.5, Math.min(COMB_H-5, b.y));
       const d = { bee:b, patch:p, pol, cx: cx0, cy: cy0, phase:'approach', t:0, circ: 0, theta: (P.az - hive.sunAz)*Math.PI/180,
@@ -1490,7 +1552,7 @@ function updateDances(dt, side){
       turnTo(fb, far>1 ? Math.atan2(ty-fb.y+1e-6, tx-fb.x) : Math.atan2(b.y-fb.y, b.x-fb.x), 7, dt);
     });
     if (d.phase!=='approach') d.left -= dt;
-    if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
+    if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; b.pollen=null; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
   }
 }
 function drawComb(){
@@ -1503,7 +1565,7 @@ function drawComb(){
   const role = colorRoles;
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
-    drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, role: role ? ROLE_COL[b.role] : null });
+    drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
