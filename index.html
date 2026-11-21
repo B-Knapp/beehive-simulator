@@ -1510,6 +1510,11 @@ addEventListener('keydown', e=>{
 const cv = $('comb'), cx = cv.getContext('2d');
 const cache = document.createElement('canvas'), ccx = cache.getContext('2d');
 const view = { z: 1, px: 0, py: 0 };
+// the hive body around the frame, in comb units (1 unit ≈ 3 mm): the box's front wall (left) and back wall (right),
+// and under the bottom box the floor with the entrance gap and landing board. Frames hang 'cold way' (front to back).
+const HB = (() => { const FT = 1.5*ROWS+0.5 + 4.5;      // floor top: one bee space (~9 mm) below the bottom bar
+  return { WIN:-3.4, WOUT:-5.8, BWIN:S3*(COLS+0.5)+3.4, BWOUT:S3*(COLS+0.5)+5.6, FT, FB:FT+2.2, GT:FT-3.4, LB:-11,
+           EXL:12, EXR:6.2, EXT:3.6, EXB:7.4 }; })();
 const COMB_W = S3*(COLS+0.5), COMB_H = 1.5*ROWS+0.5;
 let geo = { R: 5, ox: 0, oy: 0, W: 0, H: 0, dpr: 1 };
 let sideLists = null;
@@ -1517,10 +1522,10 @@ const prevComb = { side: -1, st: null };
 function layout(){
   const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
   if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); cache.width=cv.width; cache.height=cv.height; combDirty=true; }
-  const m = 26;
-  const R0 = Math.min((W-2*m)/COMB_W, (H-2*m-14)/COMB_H);
+  const m = 14, TW = COMB_W + HB.EXL + HB.EXR, TH = COMB_H + HB.EXT + HB.EXB;
+  const R0 = Math.min((W-2*m)/TW, (H-2*m)/TH);
   const R = R0*view.z;
-  const ox = (W - COMB_W*R)/2 + view.px, oy = (H - COMB_H*R)/2 + 7 + view.py;
+  const ox = (W - TW*R)/2 + HB.EXL*R + view.px, oy = (H - TH*R)/2 + HB.EXT*R + view.py;
   if (R!==geo.R||ox!==geo.ox||oy!==geo.oy) combDirty=true;
   geo = { R, R0, ox, oy, W, H, dpr };
 }
@@ -1556,6 +1561,25 @@ function grain(c,x,y,w,h,horiz,base,seed,R){
   }
   c.restore();
 }
+function drawHiveBody(c, ox, oy, R, box){
+  const X = u => ox + u*R, Y = v => oy + v*R, top = Y(-HB.EXT) - 4, base = '#a8814e';
+  const wallBot = box===0 ? HB.GT : HB.FB + 2;
+  // inside the box, behind the frame: darkness
+  c.fillStyle = '#0a0704'; c.fillRect(X(HB.WIN), top, X(HB.BWIN)-X(HB.WIN), Y(box===0?HB.FT:HB.FB+2)-top);
+  // front and back walls (cut-away edges of the box), with end grain
+  grain(c, X(HB.WOUT), top, (HB.WIN-HB.WOUT)*R, Y(wallBot)-top, false, base, 91, R);
+  grain(c, X(HB.BWIN), top, (HB.BWOUT-HB.BWIN)*R, Y(box===0?HB.FB:HB.FB+2)-top, false, base, 93, R);
+  if (box!==0) return;
+  // floor (bottom board) running under the whole box and out the front as the landing board
+  grain(c, X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), (HB.FB-HB.FT)*R, true, shade(base,0.92), 97, R);
+  c.fillStyle='rgba(255,235,190,.18)'; c.fillRect(X(HB.LB), Y(HB.FT), X(HB.BWOUT)-X(HB.LB), Math.max(1,R*0.25));
+  // the entrance: the gap between the bottom of the front wall and the floor, with daylight falling in
+  const g = c.createLinearGradient(X(HB.WOUT), 0, X(HB.WIN)+R*3, 0);
+  g.addColorStop(0, 'rgba(210,185,130,.35)'); g.addColorStop(1, 'rgba(10,7,4,0)');
+  c.fillStyle = g; c.fillRect(X(HB.WOUT), Y(HB.GT), (HB.WIN-HB.WOUT)*R + R*3, (HB.FT-HB.GT)*R);
+  // shadow line under the wall's lower edge
+  c.fillStyle='rgba(0,0,0,.45)'; c.fillRect(X(HB.WOUT), Y(HB.GT), (HB.WIN-HB.WOUT)*R, Math.max(1,R*0.3));
+}
 function drawFrameWood(c, ox, oy, R){
   const fx=ox-R*1.6, fy=oy-R*3.4, fw=COMB_W*R+R*3.2, fh=COMB_H*R+R*4.9, base='#c29a62';
   c.fillStyle='rgba(0,0,0,.35)'; c.fillRect(fx-R*3+R*0.4, fy+R*0.5, fw+R*6, R*2.6);
@@ -1581,6 +1605,7 @@ function renderComb(){
   const c = ccx; c.setTransform(dpr,0,0,dpr,0,0);
   c.fillStyle='#0f0b06'; c.fillRect(0,0,W,H);
   const side = (sel.box*10+sel.frame)*2+sel.side, base = side*CPS, box = sel.box, CS = COMB_STYLE;
+  drawHiveBody(c, ox, oy, R, box);
   drawFrameWood(c, ox, oy, R);
   // comb wall (wax) with subtle mottling
   c.fillStyle = CS.wall[Math.min(box,2)]; c.fillRect(ox, oy, COMB_W*R, COMB_H*R);
@@ -1860,6 +1885,11 @@ function enteringSprite(kind){
 }
 function leave(b){
   if (b.claim!=null){ bees.claimed.delete(b.claim); b.claim=null; }
+  if (b.forager && sel.box===0){   // back down to the floor, out through the entrance, and off from the landing board
+    const fy = HB.FT - 0.8 - Math.random()*1.3, xb = Math.max(1.5, Math.min(COMB_W*0.5, b.x));
+    b.path = [ [xb, fy], [HB.WIN+0.8, fy], [HB.LB+2+Math.random()*2, fy], [HB.LB-22, fy-14-Math.random()*10, 26, true] ];
+    b.gone=true; b.tx=xb; b.ty=COMB_H-1.2; b.mode='walk'; b.next='exit'; b.cell=null; return;
+  }
   // walk to the nearest edge, then leave this face
   const cand = [[b.x, COMB_H-0.5],[b.x,0.5],[0.5,b.y],[COMB_W-0.5,b.y]];
   let best=cand[0], bd=1e9; for (const c of cand){ const d=Math.hypot(c[0]-b.x,c[1]-b.y)*(c[1]>COMB_H-1&&sel.box===0?0.6:1); if(d<bd){bd=d;best=c;} }
@@ -1919,6 +1949,11 @@ function returningForager(){
     b.dust = Math.random()<0.6 ? 0.15+Math.random()*0.3 : 0;
     b.tx = Math.max(2, Math.min(COMB_W-2, b.x + (Math.random()-0.5)*12)); b.ty = COMB_H - 3 - Math.random()*8; b.cell=null; b.next='seek'; b.unload=true; b.nectar=true; b.waited=0;
   }
+  // she flies in, lands on the landing board, walks in through the entrance gap, along the floor and up onto the comb
+  const fy = HB.FT - 0.8 - Math.random()*1.3, xin = b.x;
+  b.path = [ [HB.LB+2+Math.random()*2.5, fy, 7, false], [HB.WIN+0.8, fy], [xin, fy], [xin, COMB_H-1.2], [b.tx, b.ty] ];
+  b.x = HB.LB - 22; b.y = fy - 14 - Math.random()*10; b.spd = 26; b.buzz = true;
+  const first = b.path.shift(); b.tx = first[0]; b.ty = first[1]; b.spd = first[2]; b.buzz = true;
   b.a = Math.atan2(b.ty-b.y, b.tx-b.x); b.mode='walk';
   return b;
 }
@@ -2059,7 +2094,8 @@ function stepHandover(b, dt){
 function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
   const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
-  const arrive = () => { b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
+  const arrive = () => { if (b.path && b.path.length){ const p=b.path.shift(); b.tx=p[0]; b.ty=p[1]; b.spd=p[2]||0; b.buzz=!!p[3]; return; }
+    b.spd=0; b.buzz=false; b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
   if (d < 0.4){ arrive(); return; }
   const want = Math.atan2(dy,dx);
   if (d < 1.6){   // last step: walk straight onto the spot (no orbiting around it)
@@ -2071,7 +2107,7 @@ function moveBee(b, dt, speed){
   b.a += Math.max(-6*dt, Math.min(6*dt, da)) + (Math.random()-0.5)*0.1;
   const v = speed*dt*Math.max(0.1, Math.cos(da));   // a bee facing away pivots almost on the spot instead of circling
   b.x += Math.cos(b.a)*Math.min(v,d); b.y += Math.sin(b.a)*Math.min(v,d);
-  b.x = Math.max(0.5, Math.min(COMB_W-0.5, b.x)); b.y = Math.max(0.5, Math.min(COMB_H-0.5, b.y));
+  if (!b.path && !b.spd){ b.x = Math.max(0.5, Math.min(COMB_W-0.5, b.x)); b.y = Math.max(0.5, Math.min(COMB_H-0.5, b.y)); }   // bees using the entrance walk off the comb
 }
 function stepBee(b, dt){
   b.wob += dt;
@@ -2084,7 +2120,7 @@ function stepBee(b, dt){
   }
   if (b.mode==='dance' || b.mode==='follow') return;
   if (b.mode==='seek' || b.mode==='handover' || b.mode==='receive'){ stepHandover(b, dt); return; }
-  if (b.mode==='walk'){ moveBee(b, dt, b.gone ? 5.5 : b.kind==='d'?3:4.5); return; }
+  if (b.mode==='walk'){ moveBee(b, dt, b.spd || (b.gone ? 5.5 : b.kind==='d'?3:4.5)); return; }
   b.t -= dt;
   if (b.mode==='rest'){ b.a += Math.sin(b.wob*1.3 + b.x)*0.006; if (isClustered()){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; } }
   else if (b.mode==='work'){ b.a += Math.sin(b.wob*2.1 + b.y)*0.004; }
@@ -2205,7 +2241,6 @@ function drawComb(){
       const k=qc.idx%CPS, r=(k/COLS)|0, col=k%COLS; arcs(ox+cellX(r,col)*R, oy+(cellY(r)+5)*R, 'rgba(255,190,120,.9)', 'quack'); }
     if (bees.queen && hive.queen.virgin) arcs(ox+bees.queen.x*R, oy+bees.queen.y*R, 'rgba(255,240,150,.95)', 'toot');
   }
-  if (sel.box===0 && R>1.5){ cx.font='11px system-ui'; cx.fillStyle='rgba(240,220,170,.75)'; cx.fillText('◀ entrance end (dance floor)', ox, oy+COMB_H*R+R*3.4+10); }
   // trophallaxis: forager's tongue extended to the receiver
   if (R > 3.5){ cx.strokeStyle='rgba(225,160,40,.9)'; cx.lineWidth=Math.max(1,R*0.12); cx.lineCap='round';
     for (const b of bees.list){ if (b.mode!=='handover' || !b.partner || !b.partner.arrived) continue; const p=b.partner;
