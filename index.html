@@ -34,6 +34,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--amber)
 #legend span{display:inline-flex;align-items:center;gap:5px}
 #legend i{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.4)}
 #land{width:100%;aspect-ratio:1/1;display:block;border-radius:6px}
+#ent{width:100%;height:190px;display:block;border-radius:6px;background:#2a3a20}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}
 .kv{display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px dotted #33271a}
 .kv b{font-weight:600;font-variant-numeric:tabular-nums;color:#fff}
@@ -73,6 +74,11 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line);b
   </section>
   <aside>
     <div class="panel">
+      <div class="ph"><h2>Entrance</h2><span id="entSub">close-up of the landing board</span></div>
+      <canvas id="ent"></canvas>
+      <div id="entInfo" class="sub" style="margin-top:4px"></div>
+    </div>
+    <div class="panel">
       <div class="ph"><h2>Outside</h2><span id="landSub">foraging range · rings every 1 km</span></div>
       <canvas id="land"></canvas>
       <div id="landInfo" class="sub" style="margin-top:4px"></div>
@@ -111,6 +117,8 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line);b
         <li><b>Queen biology</b>: laying up to ~1,800 eggs/day by season, pollen and nurse supply; drone eggs in drone comb in spring/summer. Crowding triggers <b>swarming</b>: queen cups along the bottom of brood combs, the old queen leaves with about half the bees once the first cells are capped.</li>
         <li><b>Rival queens</b>: the first virgin to emerge hunts the others — she chews a hole in the side of each queen cell (most mature first) and stings the queen inside; workers tear the cells down. Two free virgins fight to the death. In strong colonies workers instead guard the cells, the free virgin "toots" and confined queens "quack", and she leaves with an <b>afterswarm</b> before the next queen is released. In supersedure, mother and daughter may coexist until the daughter has mated.</li>
         <li><b>House-hunting</b> (Seeley): ~5 % of a swarm scout for cavities; they dance more for better sites (≈40 L, small entrance, high up, south-facing); each scout's dancing fades ~15 circuits per trip; when ~15–30 scouts are at one site at once (quorum) they pipe and the swarm flies there — usually after one to three days, and usually to the best site found.</li>
+        <li><b>Winter</b>: autumn bees that have little brood to rear keep a nurse-like physiology and live for months; they stay house bees until brood rearing resumes. The queen restarts laying after the winter solstice once it is mild enough — the warmth needed falls as the days lengthen (Nürnberger et al. 2018). The cluster burns roughly 20 kg of honey by spring.</li>
+        <li><b>Entrance</b>: every flight starts and ends at the landing board, so the entrance view draws landings and take-offs at the colony's actual rate (× the simulation speed), along with guards, fanners on hot days and evenings of nectar ripening, orientation flights of young bees, and bearding on hot evenings.</li>
         <li>Not modelled: varroa & disease, robbing, competition with other colonies, propolis.</li>
       </ul></details>
     </div>
@@ -164,7 +172,7 @@ const FLORA = [
   { name: 'Dandelion meadow', s: 92, e: 150, conc: .4, nec: 31200, pol: 100800, col: '#f08a12' },
   { name: 'Cherry & apple orchard', s: 100, e: 135, conc: .35, nec: 36000, pol: 62999, col: '#e6dcb0' },
   { name: 'Horse chestnut', s: 115, e: 145, conc: .3, nec: 14400, pol: 37800, col: '#b3323a' },
-  { name: 'Manuka Patch', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
+  { name: 'Manuka Patch', s: 160, e: 198, conc: .45, nec: 102000, pol: 6000, col: '#8e8e86' },   // mānuka: 4–6 wk bloom; grey pollen loads, rarely packed
   { name: 'Hawthorn hedges', s: 125, e: 155, conc: .35, nec: 21600, pol: 31499, col: '#d8cc98' },
   { name: 'Black locust trees', s: 138, e: 162, conc: .45, nec: 132000, pol: 12600, col: '#d6c78a' },
   { name: 'Poppies', s: 140, e: 195, conc: 0, nec: 0, pol: 50400, col: '#2b2a38' },
@@ -197,7 +205,7 @@ class Hive {
     this.sideStats = new Float32Array(SIDES * 8);
     // ---- bees
     this.alive = new Uint8Array(MAXB); this.btype = new Uint8Array(MAXB); this.bage = new Float32Array(MAXB);
-    this.wear = new Float32Array(MAXB); this.ftask = new Uint8Array(MAXB); this.fstate = new Uint8Array(MAXB);
+    this.wear = new Float32Array(MAXB); this.frail = new Float32Array(MAXB); this.ftask = new Uint8Array(MAXB); this.fstate = new Uint8Array(MAXB);
     this.patch = new Int16Array(MAXB).fill(-1); this.timer = new Float32Array(MAXB); this.tripMin = new Float32Array(MAXB);
     this.fuel = new Float32Array(MAXB); this.recruit = new Uint8Array(MAXB);
     this.free = []; this.nb = 0;
@@ -273,6 +281,9 @@ class Hive {
     let i = this.free.length ? this.free.pop() : (this.nb < MAXB ? this.nb++ : -1);
     if (i < 0) return -1;
     this.alive[i] = 1; this.btype[i] = type; this.bage[i] = age; this.wear[i] = wear;
+    // individual variation in robustness: lifespans of bees of the same age and job differ widely, so cohorts die off
+    // over weeks rather than on the same day
+    { const R = this.rand; this.frail[i] = Math.exp(0.3 * (R() + R() + R() - 1.5) * 2); }
     this.ftask[i] = 0; this.fstate[i] = 0; this.patch[i] = -1; this.timer[i] = 0; this.recruit[i] = 0;
     if (type === 0) this.nWorkers++; else this.nDrones++;
     return i;
@@ -336,9 +347,10 @@ class Hive {
     // queen
     this.queen = { present: true, mated: true, ageD: 365, laying: true, virgin: false, vAge: 0, flights: 0, layFrom: 0, droneLayer: false };
     this.queenlessH = 0; this.layingWorkers = false; this.swarmPrep = false; this.swarmEvent = null;
+    this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
     this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
-    this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.idleDays = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
     this.history = []; this.resetDay();
@@ -354,8 +366,8 @@ class Hive {
         this.st[i] = a < 72 ? ST.EGG : a < 216 ? ST.LARVA : ST.CAPPED; this.caste[i] = 0; this.age[i] = a; placed++;
       }
     }
-    // stores: ~10 kg honey left after winter, a little bee-bread
-    let honey = 10e6;
+    // stores: ~14 kg honey left after winter (spring build-up burns ~5 kg a month before the first flows), a little bee-bread
+    let honey = 14e6;
     for (let j = 0; j < this.nActive && honey > 0; j++) {
       const i = this.honeyOrder[j]; if (!this.drawn[i] || this.st[i] !== ST.EMPTY) continue;
       const m = this.droneCell[i] ? 720 : 402;
@@ -442,7 +454,10 @@ class Hive {
     const nowH = Math.floor(this.t + 1e-6);
     this.updateEnv();
     this.updatePatches(dt);
+    const l0 = this.landN, d0 = this.departN;
     this.forage(dt * 60);
+    // entrance traffic over the last tick (bees per simulated second), for the entrance view
+    this.landRate = (this.landN - l0) / (dt * 3600); this.departRate = (this.departN - d0) / (dt * 3600);
     if (nowH !== prevH) {
       const d = Math.floor(nowH / 24);
       if (d !== this.day) this.daily(d);
@@ -509,8 +524,8 @@ class Hive {
     }
     this.fuelSugar += fuel;
     this.fstate[i] = 1; this.timer[i] = trip; this.tripMin[i] = trip; this.fuel[i] = fuel;
-    this.wear[i] += (dist * 2 + trip * 0.08) / 800;        // ~800 km lifetime flight budget
-    this.tripsToday++;
+    this.wear[i] += this.frail[i] * (dist * 2 + trip * 0.08) / 800;        // ~800 km lifetime flight budget
+    this.tripsToday++; this.departN++;
   }
   land(i, newN, newP) {
     const R = this.rand, t = this.ftask[i], p = this.patch[i];
@@ -519,7 +534,7 @@ class Hive {
     let risk = 0.003 + (this.Tout < 13 ? 0.01 : 0) + (this.raining ? 0.03 : 0);
     if (R() < risk) { this.killBee(i); this.lostForagers++; return; }
     const trip = this.tripMin[i];
-    this.landingsH++;
+    this.landingsH++; this.landN++;
     let rest = 1 + this.unloadDelay + R() * 3;
     if (t === 4) {   // scout: did she find something?
       let tot = 0; const w = this.patches.map(P => { const v = P.bloom > 0.05 ? P.bloom * (P.nec + P.pol) / Math.pow(P.dist + 0.3, 2) : 0; tot += v; return v; });
@@ -540,6 +555,11 @@ class Hive {
     if (this.recruit[i]) { this.recruit[i] = 0; if (R() < 0.25) { this.patch[i] = -1; this.ftask[i] = 0; this.timer[i] = rest; return; } }
     let abandon;
     if (t === 2) {
+      // no cell near the brood to pack her loads into: she can't unload, and pollen foragers switch off (Camazine 1993)
+      if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) {
+        if (R() < 0.5) { this.patch[i] = -1; this.ftask[i] = 0; }
+        this.timer[i] = rest + 20; return;
+      }
       const A = P.pStock / P.pCap;
       let load = 16 * clamp(0.2 + A * 0.95, 0.1, 1); load = Math.min(load, P.pStock); P.pStock -= load;
       this.inPollen[p] += load; this.pollenToday += load;
@@ -574,18 +594,27 @@ class Hive {
     const onset = this.onset;
     let cleaners = 0, nurses = 0, storers = 0, guards = 0, foragers = 0, young = 0, matureDrones = 0;
     const larvaeRatio = (this.cnt ? this.cnt.larvae : 0) / Math.max(1, this.nWorkers);
-    const houseWear = (0.0065 + 0.05 * Math.min(0.3, larvaeRatio)) / 24;   // nursing load shortens life (vitellogenin)
+    // broodless bees keep their vitellogenin and barely age (winter "diutinus" bees live 6–8 months); nursing brood burns it
+    const houseWear = (0.0025 + 0.06 * Math.min(0.3, larvaeRatio)) / 24;
+    // behavioural development (bage) tracks brood: without brood to feed, young bees stay in the nurse-like "diutinus"
+    // state (Amdam & Omholt 2002; Mattila & Otis 2007), so winter bees are still house bees in spring and join the
+    // foraging force gradually as brood rearing picks up — rather than all at once on the first warm day
+    const dev = clamp(larvaeRatio / 0.04, 0.15, 1);
+    // background mortality; higher in the winter cluster (bees chilled at the mantle, lost on cleansing flights)
+    const baseDeath = T < 10 ? 0.0001 : 0.00005;
     const droneFly = !initial && this.hour >= 13 && this.hour < 17 && T >= 19 && !this.raining;
     const evict = this.evictDrones;
     let droneFlying = 0;
     for (let i = 0; i < this.nb; i++) {
       if (!this.alive[i]) continue;
-      if (!initial) this.bage[i] += 1 / 24;
+      if (!initial) this.bage[i] += (this.btype[i] === 0 ? dev : 1) / 24;
       const a = this.bage[i];
       if (this.btype[i] === 0) {
         if (!initial) {
-          this.wear[i] += a < onset ? houseWear : 0.01 / 24;
-          if (this.wear[i] >= 1 || R() < 0.00005) { this.killBee(i); continue; }
+          // ageing in the hive depends on workload (brood to feed), not on job title: older bees sitting in a broodless
+          // winter cluster age as slowly as any other bee; flights add their own wear on top (see startTrip)
+          this.wear[i] += this.frail[i] * (a < onset ? houseWear : 0.0025 / 24);   // only bees still doing house work carry the nursing load
+          if (this.wear[i] >= 1 || R() < baseDeath) { this.killBee(i); continue; }
         }
         if (a < onset) {
           const r = a / onset;
@@ -702,13 +731,15 @@ class Hive {
     // ---------- 6. consumption
     const clustered = T < 14;
     const homeW = this.nWorkers - this.outCount();
-    let perBee = clustered ? 0.06 + 0.006 * (15 - T) : 0.3;
+    // a wintering colony burns ~20–25 kg of honey from October to March (Seeley & Visscher 1985): ≈0.3 mg sugar per bee
+    // per hour in the cluster at 0 °C, more the colder it gets
+    let perBee = clustered ? 0.12 + 0.012 * (15 - T) : 0.3;
     let sugarNeed = homeW * perBee + this.nDrones * 1.0
       + c.larvae * 0.5 + c.dLarvae * 1.4
       + (brood > 0 && T < 32 ? brood * 0.004 * (34 - T) : 0)
       + this.fuelSugar;
     this.fuelSugar = 0;
-    const pollenNeed = c.larvae * 0.9 + c.dLarvae * 2.0 + young * 0.15;
+    const pollenNeed = c.larvae * 0.9 + c.dLarvae * 2.0 + young * 0.15 * clamp(c.larvae / 2000, 0.1, 1);
     const gotS = this.consumeSugar(sugarNeed);
     const gotP = this.consumePollen(pollenNeed);
     this.sugarUsedToday += gotS; this.pollenUsedToday += gotP;
@@ -736,7 +767,8 @@ class Hive {
       let bx = 2; for (; bx < this.nBoxes; bx++) { let u = 0; for (let sd = bx * 20; sd < bx * 20 + 20; sd++) u += ss[sd * 8 + 5]; if (u > 0) break; }
       if (bx < this.nBoxes) { let st2 = 0, dr2 = 0; for (let sd = (bx - 1) * 20; sd < bx * 20; sd++) { const o = sd * 8; st2 += ss[o + 1] + ss[o + 2]; dr2 += ss[o] + ss[o + 1] + ss[o + 2] + ss[o + 3] + ss[o + 4] + ss[o + 6]; } topFill = st2 / Math.max(1, dr2); }
     }
-    if (c.undrawn > 0 && this.nectar24 > 400e3 && (storageFree < 0.2 || topFill > 0.55) && T > 15) {
+    // (Pratt 1999: building is triggered by a strong nectar intake once the empty storage comb is getting scarce)
+    if (c.undrawn > 0 && this.nectar24 > 400e3 && (storageFree < 0.35 || topFill > 0.45 || this.storageFull) && T > 15) {
       let k = Math.floor((storers + guards * 0.5) * 0.05 + R());
       for (let j = 0; j < n && k > 0; j++) {
         const i = this.drawOrder[j];
@@ -754,9 +786,11 @@ class Hive {
       }
     }
     // ---------- 10. pollen demand signal (brood pheromone vs. stored bee-bread)
-    const target = 250e3 + pollenNeed * 24 * 4;
+    // colonies regulate bee-bread stores around ~1 kg (Fewell & Winston 1992; Camazine 1993) and lay down extra in late
+    // summer and autumn so brood rearing can restart in late winter before any pollen is flying
+    const target = (this.doy >= 200 && this.doy < 300 ? 1100e3 : 700e3) + pollenNeed * 24 * 4;
     this.pollenTotal = c.pollen;
-    this.pollenNeed = clamp(1 - c.pollen / target, 0, 1);
+    this.pollenNeed = this.noPollenRoomUntil && this.t < this.noPollenRoomUntil ? 0 : clamp(1 - c.pollen / target, 0, 1);
     // dance threshold rises when unloading is slow or storage is full
     this.danceThr = 0.1 + 0.006 * this.unloadDelay + (this.storageFull ? 0.4 : 0) - (c.sugar < 4e6 ? 0.04 : 0);
   }
@@ -849,7 +883,7 @@ class Hive {
   // Pollen foragers unload close to the brood (Johnson 2009: queen-based template) — into a part-filled bee-bread
   // cell of the same kind if one is handy, otherwise an empty cell; loads of different colours build up in layers.
   storePollen() {
-    if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) { this.inPollen.fill(0); return; }
+    if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) { for (const v of this.inPollen) this.pollenToday -= v; this.inPollen.fill(0); return; }
     const R = this.rand, st = this.st, n = this.nActive;
     let before = 0; for (let p = 0; p < this.inPollen.length; p++) before += this.inPollen[p];
     if (before < 1) return;
@@ -861,8 +895,9 @@ class Hive {
         for (let a = 0; a < 6; a++) {
           let i;
           if (this.nBrood > 0 && a < 5) {
-            const b = this.broodList[(R() * this.nBrood) | 0], side = (b / CPS) | 0, k = b - side * CPS;
-            const r = ((k / COLS) | 0) + ((R() * 9) | 0) - 4, cc = (k % COLS) + ((R() * 9) | 0) - 4;
+            // next to the brood first; if that ring is full of honey, a little further out on the same comb
+            const b = this.broodList[(R() * this.nBrood) | 0], side = (b / CPS) | 0, k = b - side * CPS, w = a < 3 ? 4 : 10;
+            const r = ((k / COLS) | 0) + ((R() * (2 * w + 1)) | 0) - w, cc = (k % COLS) + ((R() * (2 * w + 1)) | 0) - w;
             if (r < 0 || r >= ROWS || cc < 0 || cc >= COLS) continue;
             i = side * CPS + r * COLS + cc;
           } else i = (R() * n) | 0;
@@ -874,14 +909,14 @@ class Hive {
           else continue;
           if (score > bestScore) { bestScore = score; best = i; }
         }
-        if (best < 0) { if (++fails > 60) break; continue; }
+        if (best < 0) { if (++fails > 150) break; continue; }
         if (st[best] === ST.EMPTY) { st[best] = ST.POLLEN; this.pol[best] = 0; }
         const add = Math.min(POLLEN_CAP_W - this.pol[best], this.inPollen[p], chunk);
         this.pol[best] += add; this.inPollen[p] -= add; this.pcol[best] = p + 1;
       }
     }
     let after = 0; for (let p = 0; p < this.inPollen.length; p++) after += this.inPollen[p];
-    if (after > before * 0.9) { this.noPollenRoomUntil = this.t + 6; this.inPollen.fill(0); }
+    if (after > before * 0.9) { this.noPollenRoomUntil = this.t + 6; this.pollenToday -= after; this.inPollen.fill(0); }
   }
   // Consumption (Montovan et al. 2013, model 2): a bee picks a stores cell with probability ∝ 1 + D·(k−1), D = brood
   // density within two cells, k = 10 — so stores next to brood are eaten first — and takes one load. In a broodless
@@ -931,6 +966,9 @@ class Hive {
     const q = this.queen; if (!q.present || !q.laying) return 0;
     const d = this.doy, m = d / 30.42 - 0.5, i0 = ((Math.floor(m) % 12) + 12) % 12, f = m - Math.floor(m);
     let season = MONTH_LAY[i0] * (1 - f) + MONTH_LAY[(i0 + 1) % 12] * f;
+    // late winter (after the solstice, before April): brood rearing only restarts once a warm spell triggers it, then
+    // builds up at a pace set by the weather — so mild winters start early and cold ones late
+    if (d >= 355 || d < 100) season = Math.min(Math.max(season * 1.8, 0.06), this.winterDrive || 0);
     const yrs = q.ageD / 365;
     let max = 1800 * (yrs > 2 ? Math.max(0.35, 1 - 0.2 * (yrs - 2)) : 1);
     let res = 1;
@@ -1232,6 +1270,10 @@ class Hive {
 
   // ---------------------------------------------------------------- daily
   resetDay() {
+    // site fidelity fades: after several days without flying, foragers no longer return to their old patch and the
+    // foraging force has to be rebuilt by scouts and dances (true after winter or a long spell of bad weather)
+    if (this.tripsToday === 0) { if (++this.idleDays === 5) for (let i = 0; i < this.nb; i++) if (this.ftask[i] !== 4) { this.patch[i] = -1; this.ftask[i] = 0; } }
+    else this.idleDays = 0;
     this.nectarToday = 0; this.pollenToday = 0; this.waterToday = 0; this.tripsToday = 0; this.laidToday = 0; this.wantToday = 0;
     this.deathsToday = 0; this.lostForagers = 0; this.broodDeathsToday = 0; this.emergedToday = 0; this.sugarUsedToday = 0; this.pollenUsedToday = 0;
     this.chilledToday = 0; this.cellsDrawnToday = 0; this.movedToday = 0;
@@ -1244,7 +1286,7 @@ class Hive {
       brood: this.broodTotal || 0, honey: (c.honeySugar || 0) / 0.82 / 1e6, nectar: ((c.nectarSugar || 0) + (c.nectarWater || 0)) / 1e6,
       sugarKg: (c.sugar || 0) / 1e6, pollen: (c.pollen || 0) / 1e6, nectarIn: this.nectarToday / 1e6, pollenIn: this.pollenToday / 1e3,
       laid: this.laidToday, deaths: this.deathsToday, trips: this.tripsToday, temp: this.wx ? this.wx.mean : 0,
-      chilled: this.chilledToday, emerged: this.emergedToday,
+      chilled: this.chilledToday, emerged: this.emergedToday, weight: this.hiveWeight(),
     };
     this.history.push(rec); if (this.history.length > 800) this.history.shift();
     this.lastDay = rec;
@@ -1256,12 +1298,15 @@ class Hive {
     if (doy === 0) this.say(`Happy new year — year ${this.year} begins.`, 'info');
     this.genWeather(doy);
     this.frostKill = false;
+    this.winterBrood(doy);
     // drone eviction at the end of the season / dearth
     const wasEvict = this.evictDrones;
     this.evictDrones = (doy > 228 && (this.nectar24 < 150e3 || doy > 258)) || doy > 290 || doy < 60 || (this.cnt && this.cnt.sugar < 3e6) || (this.queen.present === false && false);
     if (this.queen.present === false || this.queen.virgin || this.virgins.length) this.evictDrones = false;
     if (this.evictDrones && !wasEvict && this.nDrones > 50) this.say('Workers are evicting the drones from the hive.', 'info');
     if (doy === 172) this.say('Summer solstice — the colony is near peak population.', 'info');
+    // autumn check: a colony needs ~20 kg of honey to see it through to spring
+    if ((doy === 258 || doy === 288) && this.cnt) { const hk = this.cnt.sugar / 0.82 / 1e6; if (hk < 20) this.say(`Winter stores look light (${hk.toFixed(0)} kg of honey; a colony needs ~20 kg) — a beekeeper would feed syrup now.`, 'keeper'); }
     if (doy === 102 && this.nBoxes <= 2) this.say('The spring nectar flow is starting — a beekeeper would add a honey super now, or the brood nest will fill with honey.', 'keeper');
     // swarm impulse check
     const Q = this.queen;
@@ -1284,6 +1329,37 @@ class Hive {
     }
     if (doy > 270 && this.wx.mean < 8 && this.clusterYear !== this.year) { this.say('Cold weather — bees are forming a winter cluster.', 'info'); this.clusterYear = this.year; }
     if (this.nWorkers < 300 && !this.deadMsg) { this.deadMsg = true; this.say('The colony has collapsed.', 'bad'); }
+  }
+
+  // ---- what a hive scale would read (kg): woodenware + wax comb + bees + brood + stores
+  hiveWeight() {
+    const c = this.cnt || {}, drawnFrac = 1 - (c.undrawn || 0) / Math.max(1, this.nActive);
+    const wood = 7 + 5.5 * this.nBoxes;                          // floor, inner cover & roof ≈ 7 kg; each box of 10 frames ≈ 5.5 kg
+    const wax = 1.0 * this.nBoxes * drawnFrac;                     // ~100 g of wax per drawn deep frame
+    const bees = (this.nWorkers * 0.11 + this.nDrones * 0.23) / 1000;
+    const brood = (this.broodTotal || 0) * 0.12 / 1000;
+    const stores = (c.honeySugar || 0) / 0.82 / 1e6 + ((c.nectarSugar || 0) + (c.nectarWater || 0)) / 1e6 + (c.pollen || 0) / 1e6;
+    return wood + wax + bees + brood + stores;
+  }
+
+  // ---- winter brood onset: warm spells after the solstice trigger it; cold snaps hold it back
+  winterBrood(doy) {
+    const T = this.wx.mean;
+    this.warm3 = ((this.warm3 ?? T) * 2 + T) / 3;                    // ~3-day running mean temperature
+    if (doy >= 250 && doy < 355) { this.winterDrive = 0; this.broodOnset = false; return; }
+    if (doy < 100 || doy >= 355) {
+      // Nürnberger et al. 2018: onset is mainly temperature-driven but modulated by day length and an internal clock —
+      // so the warmth needed falls as the days lengthen after the solstice (mild ~5 °C at first, below freezing by February)
+      const since = doy >= 355 ? doy - 355 : doy + 10, need = 5 - 0.22 * since;
+      if (!this.broodOnset && this.warm3 >= need) {
+        this.broodOnset = true; this.winterDrive = 0.02;
+        this.say(`A mild spell (${this.warm3.toFixed(0)} °C) has triggered the queen to start laying again — brood rearing resumes for spring.`, 'info');
+      }
+      if (this.broodOnset) {
+        if (this.warm3 < -2) this.winterDrive *= 0.8;                    // hard cold: the cluster contracts, laying slows
+        else this.winterDrive = Math.min(1, this.winterDrive + 0.004 + 0.0025 * Math.max(0, this.warm3));
+      }
+    } else this.winterDrive = 1;
   }
 
   // ---------------------------------------------------------------- beekeeper actions
@@ -1493,7 +1569,9 @@ function renderComb(){
   const lists = { egg:[], larva:[], capped:[], nectar:[], honey:[], pollen:[], empty:[], dirty:[], undrawn:[], brood:[] };
   // bees that just chewed out of their cells on this face (capped brood → vacated cell)
   if (prevComb.side===side && prevComb.st){
-    for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push(k);   // (vacated cells are often cleaned within the same hour)
+    // bees chew out at different moments through the hour: each gets her own time, and her cap stays on until then
+    const tNow = hive.t + simAcc;
+    for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push({ k, at: tNow + Math.random(), drone: hive.caste[base+k]===1 });
   }
   prevComb.side = side; prevComb.st = hive.st.slice(base, base+CPS);
   const st=hive.st, rr = R*0.86, detail = R >= 4.2, hi = R >= 9, cavity = CS.cavity[Math.min(box,2)];
@@ -1846,17 +1924,26 @@ function updateBees(dt){
     bees.emerging.length = 0; cw = nW; cd = nD;
   }
   // newly emerged bees appear in the very cells they hatched from
-  while (bees.emerging.length){
-    const k = bees.emerging.pop();
+  const tSim = hive.t + simAcc;
+  for (let q=bees.emerging.length-1; q>=0; q--){
+    const e = bees.emerging[q]; if (e.at > tSim) continue;
+    bees.emerging.splice(q,1);
     if (Math.random() > 1/bees.scale) continue;
-    const [x,y] = bees.cellPos(k);
-    const b = newSprite('w'); b.x=x; b.y=y; b.role='cleaner'; b.mode='work'; b.t=2+Math.random()*3; b.a=Math.random()*6.28;
-    bees.list.push(b); cw++;
+    const [x,y] = bees.cellPos(e.k);
+    // she climbs out of the cell head first, then wanders off to her first job: cleaning cells
+    const b = newSprite(e.drone?'d':'w'); b.x=x; b.y=y; b.role=e.drone?'drone':'cleaner'; b.mode='work'; b.t=2+Math.random()*3; b.a=Math.random()*6.28;
+    bees.list.push(b); if (e.drone) cd++; else cw++;
   }
   // steady traffic of foragers coming home through the entrance below the bottom box
-  if (sel.box===0 && hive.canFly && !isClustered()){
+  if (sel.box===0 && !isClustered()){
+    // real arrivals on this face = the colony's landing rate × simulation speed × this face's share of the unloading
+    // (foragers unload on the bottom-box combs, most on the central ones) ÷ bees per sprite; capped so the comb stays legible
     const sp = SPEEDS[speedIdx][1];
-    const rate = sp===0 ? 0 : Math.min(3, Math.max(0.35, sp/600)) * Math.min(1, hive.outCount()/800);
+    let s0=0; for (let s=0;s<20;s++) s0+=sideWeight(s);
+    const share = sideWeight(want.side)/Math.max(1e-9,s0);
+    const trueRate = hive.landRate * sp * share / bees.scale;
+    bees.trafficTrue = trueRate * bees.scale;
+    const rate = Math.min(4, trueRate);
     bees._traffic = (bees._traffic||0) + rate*dt;
     while (bees._traffic >= 1){ bees._traffic -= 1; const f = returningForager(); if (f){ bees.list.push(f); cw++; } }
   }
@@ -2076,6 +2163,11 @@ function drawComb(){
   cx.setTransform(dpr,0,0,dpr,0,0);
   const sc = R;
   const role = colorRoles;
+  if (bees.emerging.length){ const rr=R*0.86;
+    for (const e of bees.emerging){ const [ex,ey]=bees.cellPos(e.k), x=ox+ex*R, y=oy+ey*R; if (x<-R*2||x>W+R*2||y<-R*2||y>H+R*2) continue;
+      cx.fillStyle = e.drone ? COMB_STYLE.dcap : COMB_STYLE.wcap; cx.beginPath(); hexPath(cx,x,y,rr*0.98); cx.fill();
+      if (R>=4.2){ cx.fillStyle = shade(e.drone?COMB_STYLE.dcap:COMB_STYLE.wcap, 1.15); cx.beginPath(); cx.ellipse(x-R*0.12,y-R*0.15,rr*0.6,rr*0.56,0,0,7); cx.fill();
+        const left = e.at - (hive.t+simAcc); if (left < 0.12){ cx.fillStyle='rgba(40,25,10,.7)'; cx.beginPath(); cx.arc(x,y,rr*0.55*(1-left/0.12),0,7); cx.fill(); } } } }   // chewing through the cap
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
     drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
@@ -2303,6 +2395,147 @@ function updateLandInfo(){
 }
 function compass(az){ return ['N','NE','E','SE','S','SW','W','NW'][Math.round(az/45)%8]; }
 
+// ======================================================= entrance close-up
+// A front view of ~22 cm of the entrance: the bottom box's front wall, the entrance slot and the landing board.
+// Every flight in the simulation starts or ends here, so arrivals and departures are drawn at the colony's real
+// landing / take-off rate × simulation speed. When that is more than can be drawn, each bee shown stands for several.
+const ec = $('ent'), ex = ec.getContext('2d');
+const ENT = { bees: [], accIn: 0, accOut: 0, scale: 1, inRate: 0, outRate: 0, guards: [], fanners: [], orient: [], beard: null, CAP: 5 };
+function entGeom(){ const W = ec.clientWidth, H = ec.clientHeight;
+  return { W, H, wallB: H*0.36, slotB: H*0.44, boardF: H*0.84, edgeB: H*0.88, s: Math.max(4.5, W/62) }; }   // s: px per bee-body unit (~13 mm bee ≈ 3.8 units)
+function entBg(g, G){
+  const { W, H, wallB, slotB, boardF, edgeB } = G, el = hive.sunEl, doy = hive.doy;
+  const summer = Math.max(0, Math.sin(2*Math.PI*(doy-80)/365));
+  // ground and grass in front of / below the stand
+  g.fillStyle = `rgb(${Math.round(60+30*(1-summer))},${Math.round(80+40*summer)},${Math.round(40+8*(1-summer))})`; g.fillRect(0, edgeB, W, H-edgeB);
+  for (let k=0;k<70;k++){ const x=hsh(k)*W, y=edgeB+hsh(k+9)*(H-edgeB), h=4+hsh(k+3)*9; g.strokeStyle=`rgba(${hsh(k+5)<.5?'30,55,20':'130,150,70'},.6)`; g.lineWidth=1; g.beginPath(); g.moveTo(x,y+h); g.lineTo(x+(hsh(k+1)-0.5)*4,y); g.stroke(); }
+  // hive front wall (painted wood) with grain
+  const wg = g.createLinearGradient(0,0,0,wallB); wg.addColorStop(0,'#e7dcc0'); wg.addColorStop(1,'#cbbd98');
+  g.fillStyle = wg; g.fillRect(0, 0, W, wallB);
+  g.strokeStyle='rgba(120,95,55,.18)'; g.lineWidth=1; for (let k=0;k<9;k++){ const y=hsh(k*7)*wallB; g.beginPath(); g.moveTo(0,y); g.bezierCurveTo(W*0.3,y+3*Math.sin(k),W*0.7,y-3,W,y+2); g.stroke(); }
+  // the slot: dark gap between the box and the floor, with the hive interior in shadow
+  const sg = g.createLinearGradient(0, wallB, 0, slotB); sg.addColorStop(0,'#050302'); sg.addColorStop(1,'#2a1e12');
+  g.fillStyle = sg; g.fillRect(0, wallB, W, slotB-wallB);
+  // landing board (floor extension), seen from slightly above, then its front edge
+  const bg = g.createLinearGradient(0, slotB, 0, boardF); bg.addColorStop(0,'#9c7f52'); bg.addColorStop(1,'#c2a575');
+  g.fillStyle = bg; g.fillRect(0, slotB, W, boardF-slotB);
+  g.strokeStyle='rgba(90,65,35,.22)'; for (let k=0;k<7;k++){ const y=slotB+(0.15+k*0.12)*(boardF-slotB); g.beginPath(); g.moveTo(0,y+hsh(k)*2); g.lineTo(W,y-hsh(k+2)*2); g.stroke(); }
+  g.fillStyle = '#7d6240'; g.fillRect(0, boardF, W, edgeB-boardF);
+  // shadow cast by the wall onto the back of the board
+  const shd = g.createLinearGradient(0, slotB, 0, slotB+12); shd.addColorStop(0,'rgba(0,0,0,.35)'); shd.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=shd; g.fillRect(0,slotB,W,12);
+}
+function entPickKind(){
+  // what is landing right now, in proportion to what is out there: pollen / nectar / water / scouts / drones
+  let tN=0, tP=0; for (let p=0;p<hive.patches.length;p++){ tN+=hive.flyN[p]; tP+=hive.flyP[p]; }
+  const tot = tN+tP+hive.flyW+hive.flyScout+hive.flyDrones*0.5; if (tot<=0) return { kind:'w' };
+  let x = Math.random()*tot;
+  if ((x -= hive.flyDrones*0.5) < 0) return { kind:'d' };
+  if ((x -= hive.flyW) < 0) return { kind:'w', water:true };
+  if ((x -= hive.flyScout) < 0) return { kind:'w' };
+  const pk = pickFlyingPatch(); if (!pk) return { kind:'w' };
+  const P = hive.patches[pk.p]; return { kind:'w', pollen: pk.pollen ? P.col : null, dustCol: P.col };
+}
+function entOffscreen(G){   // bees come from / go to the open air in front of the hive: below, and to both sides
+  const { W, H } = G, r = Math.random();
+  if (r < 0.5) return [Math.random()*W, H + 20];
+  return [r < 0.75 ? -20 : W+20, G.wallB*0.2 + Math.random()*(H*0.9 - G.wallB*0.2)];
+}
+function entSpawnIn(G){
+  const k = entPickKind(), [sx, sy] = entOffscreen(G);
+  const lx = 10 + Math.random()*(G.W-20), ly = G.slotB + (0.35+Math.random()*0.6)*(G.boardF-G.slotB);
+  // a curved approach that slows and drops onto the board (bees land facing the entrance)
+  const cx1 = (sx+lx)/2 + (Math.random()-0.5)*G.W*0.4, cy1 = Math.min(sy, ly) - 20 - Math.random()*40;
+  ENT.bees.push({ mode:'in', kind:k.kind, pollen:k.pollen||null, dust:k.pollen?0.6:k.dustCol?0.25:0, dustCol:k.dustCol, water:k.water,
+    p0:[sx,sy], p1:[cx1,cy1], p2:[lx,ly], t:0, dur:0.55+Math.random()*0.5, x:sx, y:sy, a:-Math.PI/2, seed:(Math.random()*1e6)|0 });
+}
+function entSpawnOut(G){
+  const k = entPickKind();
+  const x = 10 + Math.random()*(G.W-20);
+  ENT.bees.push({ mode:'walkout', kind:k.kind, x, y:G.wallB - 6, tx: x + (Math.random()-0.5)*30, ty: G.slotB + (0.3+Math.random()*0.65)*(G.boardF-G.slotB),
+    a: Math.PI/2, t:0, seed:(Math.random()*1e6)|0, dust:0 });
+}
+function bez(p0,p1,p2,t){ const u=1-t; return [u*u*p0[0]+2*u*t*p1[0]+t*t*p2[0], u*u*p0[1]+2*u*t*p1[1]+t*t*p2[1]]; }
+function entStep(b, dt, G){
+  const walk = G.s*5;     // a few cm per second
+  if (b.mode==='in'){
+    b.t += dt/b.dur; const e = 1-Math.pow(1-Math.min(1,b.t),2);          // decelerating approach
+    const [nx,ny] = bez(b.p0,b.p1,b.p2,e); if (Math.hypot(nx-b.x,ny-b.y)>0.01) b.a = Math.atan2(ny-b.y, nx-b.x); b.x=nx; b.y=ny;
+    if (b.t>=1){ b.mode='settle'; b.t=0.12+Math.random()*0.25; }
+  } else if (b.mode==='settle'){ b.t-=dt; turnTo(b, -Math.PI/2, 8, dt); if (b.t<=0){ b.mode = Math.random()<0.15 ? 'checked' : 'walkin'; b.t = 0.4+Math.random()*0.8; } }
+  else if (b.mode==='checked'){ b.t-=dt; if (b.t<=0) b.mode='walkin'; }                 // a guard antennates her first
+  else if (b.mode==='walkin'){ const tx=b.x, ty=G.wallB-10; const d=ty-b.y; b.y += Math.max(d, -walk*dt); turnTo(b, -Math.PI/2+(Math.random()-0.5)*0.2, 6, dt); if (b.y <= G.wallB-8) b.gone=true; }
+  else if (b.mode==='walkout'){ const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy); if (d<1){ b.mode='pause'; b.t=0.1+Math.random()*0.6; } else { turnTo(b, Math.atan2(dy,dx), 6, dt); const v=Math.min(d, walk*dt); b.x+=dx/d*v; b.y+=dy/d*v; } }
+  else if (b.mode==='pause'){ b.t-=dt; if (b.t<=0){ const [tx,ty]=entOffscreen(G); b.mode='out'; b.p0=[b.x,b.y]; b.p2=[tx,ty]; b.p1=[b.x+(Math.random()-0.5)*40, b.y-30-Math.random()*40]; b.t=0; b.dur=0.45+Math.random()*0.4; } }
+  else if (b.mode==='out'){ b.t += dt/b.dur; const e=Math.pow(Math.min(1,b.t),1.6);  // accelerating take-off
+    const [nx,ny]=bez(b.p0,b.p1,b.p2,e); if (Math.hypot(nx-b.x,ny-b.y)>0.01) b.a=Math.atan2(ny-b.y,nx-b.x); b.x=nx; b.y=ny; if (b.t>=1) b.gone=true; }
+}
+function drawEntrance(dt){
+  const dpr=devicePixelRatio||1, G=entGeom(); if (ec.width!==Math.round(G.W*dpr) || ec.height!==Math.round(G.H*dpr)){ ec.width=Math.round(G.W*dpr); ec.height=Math.round(G.H*dpr); }
+  const g=ex; g.setTransform(dpr,0,0,dpr,0,0); entBg(g, G);
+  const sp = SPEEDS[speedIdx][1], VIEW = 0.6;                       // the view shows ~60% of the entrance's width
+  const flying = hive.canFly || hive.outCount()>0;
+  ENT.inRate = hive.landRate*sp*VIEW; ENT.outRate = hive.departRate*sp*VIEW;
+  ENT.scale = Math.max(1, (ENT.inRate+ENT.outRate)/(2*ENT.CAP));
+  if (sp>0){ ENT.accIn += ENT.inRate/ENT.scale*dt; ENT.accOut += ENT.outRate/ENT.scale*dt; }
+  ENT.accIn = Math.min(ENT.accIn, 20); ENT.accOut = Math.min(ENT.accOut, 20);
+  while (ENT.accIn >= 1){ ENT.accIn--; entSpawnIn(G); }
+  while (ENT.accOut >= 1){ ENT.accOut--; entSpawnOut(G); }
+  // guards stand just outside the slot facing out; more of them when nectar is scarce (robbing pressure)
+  const nG = hive.isDay && hive.Tout > 8 ? Math.min(7, Math.round(2 + (hive.roles.guards||0)/900 + (hive.nectar24 < 200e3 && hive.canFly ? 2 : 0))) : 0;
+  while (ENT.guards.length < nG) ENT.guards.push({ x: 12+Math.random()*(G.W-24), y: G.slotB+4+Math.random()*10, a: Math.PI/2 + (Math.random()-0.5)*0.8, ph: Math.random()*6, seed:(Math.random()*1e6)|0 });
+  while (ENT.guards.length > nG){ const q=ENT.guards.pop(); ENT.bees.push({ mode:'walkin', kind:'w', x:q.x, y:q.y, a:q.a, seed:q.seed, dust:0 }); }   // go back inside
+  // fanners: on hot days, or evenings when lots of fresh nectar is being dried, they face the entrance and fan
+  const hot = hive.Tout > 27, ripen = (hive.cnt.nectarWater||0) > 1.2e6 && (hive.hour > 15 || hive.hour < 5);
+  const nF = (hot || ripen) && hive.Tout > 14 ? Math.min(12, Math.round((hot ? (hive.Tout-26)*2 : 0) + (ripen ? 4 : 0))) : 0;
+  while (ENT.fanners.length < nF) ENT.fanners.push({ x: 8+Math.random()*(G.W-16), y: G.slotB + (0.25+Math.random()*0.4)*(G.boardF-G.slotB), a: -Math.PI/2 + (Math.random()-0.5)*0.25, seed:(Math.random()*1e6)|0 });
+  while (ENT.fanners.length > nF){ const q=ENT.fanners.pop(); ENT.bees.push({ mode:'walkin', kind:'w', x:q.x, y:q.y, a:q.a, seed:q.seed, dust:0 }); }
+  // orientation ("play") flights: young bees hover facing the hive on warm afternoons, learning its position
+  const nO = hive.canFly && hive.hour >= 12 && hive.hour < 16 && hive.Tout > 18 ? Math.min(14, Math.round((hive.roles.storers||0)/1500)) : 0;
+  while (ENT.orient.length < nO){ const [sx,sy]=entOffscreen(G); ENT.orient.push({ x:sx, y:sy, hx: 20+Math.random()*(G.W-40), hy: G.wallB*0.25+Math.random()*G.H*0.45, ph:Math.random()*6, t:0, life: 6+Math.random()*10, seed:(Math.random()*1e6)|0 }); }
+  // beard: on hot, humid evenings crowded colonies hang outside on the front wall
+  const beard = hive.Tout > 29 && hive.nWorkers > 30000 && hive.hour >= 16 ? Math.min(1, (hive.Tout-29)/4) : 0;
+  const s = G.s, now = performance.now()/1000;
+  for (const f of ENT.fanners){ drawBee(g, f.x, f.y, f.a, s, 'w', { buzz:true, seed:f.seed }); }
+  for (const q of ENT.guards){ q.ph += dt; const jit = Math.sin(q.ph*1.7)*0.15; drawBee(g, q.x + Math.sin(q.ph*0.6)*1.5, q.y, q.a+jit, s, 'w', { seed:q.seed }); }
+  // walkers & flyers (walkers first so flyers pass over them)
+  for (const b of ENT.bees) entStep(b, dt, G);
+  ENT.bees = ENT.bees.filter(b=>!b.gone);
+  const airborne = b => b.mode==='in' || b.mode==='out';
+  for (const b of ENT.bees) if (!airborne(b)) drawBee(g, b.x, b.y, b.a, b.kind==='d'?s*1.05:s, b.kind, { pollen:b.pollen, load:1, dust:b.dust, dustCol:b.dustCol, seed:b.seed });
+  // the front wall hides bees that have walked into the slot
+  const wg = g.createLinearGradient(0,0,0,G.wallB); wg.addColorStop(0,'#e7dcc0'); wg.addColorStop(1,'#cbbd98'); g.fillStyle=wg; g.fillRect(0, 0, G.W, G.wallB-1);
+  if (beard > 0){ const n = Math.round(60*beard); for (let k=0;k<n;k++){ const u=hsh(k*5), v=hsh(k*7+1); const x=G.W*(0.25+u*0.5), y=G.wallB - 2 - Math.pow(v,1.5)*G.wallB*0.7*beard*(1-Math.abs(u-0.5)*1.4);
+      drawBee(g, x, y, Math.PI/2+(hsh(k)-0.5)*1.2 + Math.sin(now*0.7+k)*0.05, s*0.92, 'w', { seed:k }); } }
+  for (const o of ENT.orient){ o.t += dt; o.ph += dt;
+    const dx = o.hx + Math.sin(o.ph*1.3)*30 - o.x, dy = o.hy + Math.sin(o.ph*0.8)*12 - o.y; o.x += dx*Math.min(1,dt*2.5); o.y += dy*Math.min(1,dt*2.5);
+    drawBee(g, o.x, o.y, -Math.PI/2 + Math.sin(o.ph*1.3)*0.5, s, 'w', { buzz:true, seed:o.seed });
+    if (o.t > o.life && o.mode!=='leave'){ o.mode='leave'; const [tx,ty]=entOffscreen(G); o.hx=tx; o.hy=ty; o.ph=0; }
+    if (o.mode==='leave'){ o.hx += 0; if (o.x<-12||o.x>G.W+12||o.y>G.H+12) o.dead=true; } }
+  { let active = ENT.orient.filter(o=>o.mode!=='leave').length; for (const o of ENT.orient) if (active > nO && o.mode!=='leave'){ o.t = o.life+1; active--; } }   // the rest fly off
+  ENT.orient = ENT.orient.filter(o=>!o.dead);
+  for (const b of ENT.bees) if (airborne(b)){
+    // shadow on the board for low flyers
+    if (b.y > G.slotB-10){ g.fillStyle='rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(b.x, Math.max(b.y, G.slotB)+6, s*1.6, s*0.6, 0, 0, 7); g.fill(); }
+    drawBee(g, b.x, b.y, b.a, b.kind==='d'?s*1.05:s, b.kind, { buzz:true, pollen:b.pollen, load:1, dust:b.dust, dustCol:b.dustCol, seed:b.seed });
+  }
+  // light: night and dusk darken the scene; rain streaks
+  const el = hive.sunEl, night = el<0 ? Math.min(0.7, -el/12*0.7+0.2) : (el<6?0.15*(1-el/6):0);
+  if (night>0){ g.fillStyle=`rgba(10,15,45,${night})`; g.fillRect(0,0,G.W,G.H); }
+  if (hive.raining){ g.strokeStyle='rgba(200,215,255,.4)'; g.lineWidth=1; g.beginPath(); for(let t=0;t<60;t++){ const x=(t*53+now*250)%G.W, y=(t*97+now*600)%G.H; g.moveTo(x,y); g.lineTo(x-3,y+9);} g.stroke(); }
+  if (hive.Tout<0){ g.fillStyle='rgba(220,235,255,.15)'; g.fillRect(0,0,G.W,G.H); }
+}
+function updateEntInfo(){
+  const el=$('entInfo'), sp=SPEEDS[speedIdx][1];
+  const inM = hive.landRate*60, outM = hive.departRate*60;
+  let msg;
+  if (!hive.isDay) msg = hive.outCount()>0 ? `Dusk — the last foragers are coming home (${fmt(inM)} landing per minute).` : 'Night — the whole colony is inside; the entrance is quiet.';
+  else if (hive.raining) msg = 'Raining — no flights. Foragers wait inside.';
+  else if (!hive.canFly && hive.outCount()===0) msg = `Too cold to fly (${hive.Tout.toFixed(0)} °C).${hive.Tout<10?' The colony is clustered inside.':''}`;
+  else msg = `<b>${fmt(inM)}</b> bees landing and <b>${fmt(outM)}</b> taking off per minute (whole entrance, simulated time)`
+    + (ENT.scale>1.05 ? ` · at this speed each bee drawn stands for ~${fmt(ENT.scale)}` : sp===1 ? ' · shown in real time' : '');
+  el.innerHTML = msg;
+}
+
 // ======================================================= stats
 function bar(label, v, max, col, sub){ return `<div class="bar"><span>${label}</span><div><i style="width:${Math.min(100,v/max*100)}%;background:${col}"></i></div><b>${sub??fmt(v)}</b></div>`; }
 function updateStats(){
@@ -2370,7 +2603,7 @@ function drawChart(){
   const g=chx; g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
   const hs = hive.history.slice(-365); if (hs.length<2){ g.fillStyle='#b7a37e'; g.font='12px system-ui'; g.fillText('Collecting data — a point is added each simulated day.', 8, H/2); return; }
   const L=34, Rr=34, T=16, B=18, pw=W-L-Rr, ph=H-T-B;
-  const maxB = Math.max(10000, ...hs.map(h=>Math.max(h.workers,h.brood)))*1.08, maxH = Math.max(10, ...hs.map(h=>h.honey+h.nectar))*1.1;
+  const maxB = Math.max(10000, ...hs.map(h=>Math.max(h.workers,h.brood)))*1.08, maxH = Math.max(10, ...hs.map(h=>Math.max(h.honey+h.nectar, h.weight||0)))*1.1;
   const X = i => L + i/(364)*pw;
   g.strokeStyle='#33271a'; g.lineWidth=1; g.font='10px system-ui'; g.fillStyle='#8f7d5c';
   for (let k=0;k<=4;k++){ const y=T+ph*k/4; g.beginPath(); g.moveTo(L,y); g.lineTo(L+pw,y); g.stroke(); g.fillText(fmt(maxB*(1-k/4)/1000)+'k', 2, y+3); g.fillText((maxH*(1-k/4)).toFixed(0)+'kg', L+pw+3, y+3); }
@@ -2379,7 +2612,8 @@ function drawChart(){
   g.fillStyle='rgba(242,194,74,.28)'; g.beginPath(); g.moveTo(X(0),T+ph); hs.forEach((h,i)=>g.lineTo(X(i), T+ph-(h.honey+h.nectar)/maxH*ph)); g.lineTo(X(hs.length-1),T+ph); g.fill();
   const line=(f,col,w)=>{ g.strokeStyle=col; g.lineWidth=w; g.beginPath(); hs.forEach((h,i)=>{ const y=T+ph-f(h)/maxB*ph; i?g.lineTo(X(i),y):g.moveTo(X(i),y); }); g.stroke(); };
   line(h=>h.brood,'#b07a3a',1.6); line(h=>h.drones*5,'#8a8a8a',1); line(h=>h.workers,'#ffd24a',2);
-  g.font='11px system-ui'; [['Workers','#ffd24a'],['Brood','#b07a3a'],['Drones ×5','#8a8a8a'],['Honey+nectar (kg)','#f2c24a']].reduce((x,[l,c])=>{ g.fillStyle=c; g.fillRect(x,4,8,8); g.fillStyle='#d9c8a4'; g.fillText(l,x+11,12); return x+g.measureText(l).width+24; }, L);
+  g.strokeStyle='#9fd0ff'; g.lineWidth=1.6; g.setLineDash([5,3]); g.beginPath(); let st0=false; hs.forEach((h,i)=>{ if(h.weight==null) return; const y=T+ph-h.weight/maxH*ph; st0?g.lineTo(X(i),y):g.moveTo(X(i),y); st0=true; }); g.stroke(); g.setLineDash([]);
+  g.font='11px system-ui'; [['Workers','#ffd24a'],['Brood','#b07a3a'],['Drones×5','#8a8a8a'],['Honey kg','#f2c24a'],['Hive kg','#9fd0ff']].reduce((x,[l,c])=>{ g.fillStyle=c; g.fillRect(x,4,8,8); g.fillStyle='#d9c8a4'; g.fillText(l,x+11,12); return x+g.measureText(l).width+18; }, 4);
 }
 
 // ======================================================= log, clock
@@ -2393,7 +2627,7 @@ function updateClock(){
   const wx = hive.raining ? '🌧 rain' : !hive.isDay ? (hive.sunEl>-6?'🌅 twilight':'🌙 night') : hive.wx.cloud>0.5?'⛅ cloudy':'☀️ sunny';
   $('clock').innerHTML = `Year ${Math.floor(d/365)+1} · <b>${doyToDate(d%365)}</b> · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} <span class="wx">${wx} · ${hive.Tout.toFixed(1)} °C · daylight ${(hive.sunset-hive.sunrise).toFixed(1)} h</span>`;
   const side=(sel.box*10+sel.frame)*2+sel.side, o=side*8, ss=hive.sideStats; const nb=beesOnSide();
-  $('frameLabel').innerHTML = `${sel.box<2?`Box ${sel.box+1}`:`Super ${sel.box-1}`} · frame ${sel.frame+1} · side ${'AB'[sel.side]} — ~${fmt(nb.w)} workers${nb.d?`, ${fmt(nb.d)} drones`:''} on this face${bees.scale>1?` (showing ${MAXS}, 1 sprite ≈ ${bees.scale.toFixed(1)} bees)`:''} · ${fmt(ss[o])} brood · ${fmt(ss[o+1]+ss[o+2])} honey/nectar · ${fmt(ss[o+3])} pollen &nbsp;<span class="sub">(click the boxes above or use arrow keys)</span>`;
+  $('frameLabel').innerHTML = `${sel.box<2?`Box ${sel.box+1}`:`Super ${sel.box-1}`} · frame ${sel.frame+1} · side ${'AB'[sel.side]} — ~${fmt(nb.w)} workers${nb.d?`, ${fmt(nb.d)} drones`:''} on this face${bees.scale>1?` (showing ${MAXS}, 1 sprite ≈ ${bees.scale.toFixed(1)} bees)`:''}${sel.box===0&&bees.trafficTrue>0.05&&bees.trafficTrue>4*bees.scale?` · <span class="warn">foragers arrive faster than can be drawn at this speed — see the entrance view</span>`:''} · ${fmt(ss[o])} brood · ${fmt(ss[o+1]+ss[o+2])} honey/nectar · ${fmt(ss[o+3])} pollen &nbsp;<span class="sub">(click the boxes above or use arrow keys)</span>`;
   $('bQueen').disabled = hive.queen.present;
   $('bSuper').disabled = hive.nBoxes>=6; $('bSuper').textContent = hive.nBoxes>=6 ? 'Max supers' : `Add super ${hive.nBoxes-1}`;
   $('bRemove').disabled = hive.nBoxes<=2;
@@ -2431,7 +2665,8 @@ function frame(now){
     updateBees(dt);
     drawComb();
     drawLand(dt);
-    uiTimer -= dt; if (uiTimer<=0){ uiTimer=0.25; updateStats(); updateClock(); updateLandInfo(); }
+    drawEntrance(dt);
+    uiTimer -= dt; if (uiTimer<=0){ uiTimer=0.25; updateStats(); updateClock(); updateLandInfo(); updateEntInfo(); }
   }
   requestAnimationFrame(frame);
 }
@@ -2440,7 +2675,7 @@ function newColony(startDoy){
   window._loading = true; $('loading').style.display='flex';
   const target = startDoy, seed = (Math.random()*1e9)|0;
   hive = new Hive({ seed, startDoy: 59, allowSwarm: $('tSwarm').checked });
-  bees.reset(); particles=[]; landKey=''; simAcc=0; window._dca=null; for (const kk in swarmAnim) delete swarmAnim[kk];
+  bees.reset(); ENT.bees=[]; ENT.guards=[]; ENT.fanners=[]; ENT.orient=[]; particles=[]; landKey=''; simAcc=0; window._dca=null; for (const kk in swarmAnim) delete swarmAnim[kk];
   const days = target-59;
   const step = () => {
     const t0=performance.now();

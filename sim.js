@@ -43,7 +43,7 @@ const FLORA = [
   { name: 'Dandelion meadow', s: 92, e: 150, conc: .4, nec: 31200, pol: 100800, col: '#f08a12' },
   { name: 'Cherry & apple orchard', s: 100, e: 135, conc: .35, nec: 36000, pol: 62999, col: '#e6dcb0' },
   { name: 'Horse chestnut', s: 115, e: 145, conc: .3, nec: 14400, pol: 37800, col: '#b3323a' },
-  { name: 'Manuka Patch', s: 108, e: 145, conc: .45, nec: 102000, pol: 94500, col: '#f5d000' },
+  { name: 'Manuka Patch', s: 160, e: 198, conc: .45, nec: 102000, pol: 6000, col: '#8e8e86' },   // mānuka: 4–6 wk bloom; grey pollen loads, rarely packed
   { name: 'Hawthorn hedges', s: 125, e: 155, conc: .35, nec: 21600, pol: 31499, col: '#d8cc98' },
   { name: 'Black locust trees', s: 138, e: 162, conc: .45, nec: 132000, pol: 12600, col: '#d6c78a' },
   { name: 'Poppies', s: 140, e: 195, conc: 0, nec: 0, pol: 50400, col: '#2b2a38' },
@@ -76,7 +76,7 @@ class Hive {
     this.sideStats = new Float32Array(SIDES * 8);
     // ---- bees
     this.alive = new Uint8Array(MAXB); this.btype = new Uint8Array(MAXB); this.bage = new Float32Array(MAXB);
-    this.wear = new Float32Array(MAXB); this.ftask = new Uint8Array(MAXB); this.fstate = new Uint8Array(MAXB);
+    this.wear = new Float32Array(MAXB); this.frail = new Float32Array(MAXB); this.ftask = new Uint8Array(MAXB); this.fstate = new Uint8Array(MAXB);
     this.patch = new Int16Array(MAXB).fill(-1); this.timer = new Float32Array(MAXB); this.tripMin = new Float32Array(MAXB);
     this.fuel = new Float32Array(MAXB); this.recruit = new Uint8Array(MAXB);
     this.free = []; this.nb = 0;
@@ -152,6 +152,9 @@ class Hive {
     let i = this.free.length ? this.free.pop() : (this.nb < MAXB ? this.nb++ : -1);
     if (i < 0) return -1;
     this.alive[i] = 1; this.btype[i] = type; this.bage[i] = age; this.wear[i] = wear;
+    // individual variation in robustness: lifespans of bees of the same age and job differ widely, so cohorts die off
+    // over weeks rather than on the same day
+    { const R = this.rand; this.frail[i] = Math.exp(0.3 * (R() + R() + R() - 1.5) * 2); }
     this.ftask[i] = 0; this.fstate[i] = 0; this.patch[i] = -1; this.timer[i] = 0; this.recruit[i] = 0;
     if (type === 0) this.nWorkers++; else this.nDrones++;
     return i;
@@ -215,9 +218,10 @@ class Hive {
     // queen
     this.queen = { present: true, mated: true, ageD: 365, laying: true, virgin: false, vAge: 0, flights: 0, layFrom: 0, droneLayer: false };
     this.queenlessH = 0; this.layingWorkers = false; this.swarmPrep = false; this.swarmEvent = null;
+    this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
     this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
-    this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.idleDays = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
     this.history = []; this.resetDay();
@@ -233,8 +237,8 @@ class Hive {
         this.st[i] = a < 72 ? ST.EGG : a < 216 ? ST.LARVA : ST.CAPPED; this.caste[i] = 0; this.age[i] = a; placed++;
       }
     }
-    // stores: ~10 kg honey left after winter, a little bee-bread
-    let honey = 10e6;
+    // stores: ~14 kg honey left after winter (spring build-up burns ~5 kg a month before the first flows), a little bee-bread
+    let honey = 14e6;
     for (let j = 0; j < this.nActive && honey > 0; j++) {
       const i = this.honeyOrder[j]; if (!this.drawn[i] || this.st[i] !== ST.EMPTY) continue;
       const m = this.droneCell[i] ? 720 : 402;
@@ -321,7 +325,10 @@ class Hive {
     const nowH = Math.floor(this.t + 1e-6);
     this.updateEnv();
     this.updatePatches(dt);
+    const l0 = this.landN, d0 = this.departN;
     this.forage(dt * 60);
+    // entrance traffic over the last tick (bees per simulated second), for the entrance view
+    this.landRate = (this.landN - l0) / (dt * 3600); this.departRate = (this.departN - d0) / (dt * 3600);
     if (nowH !== prevH) {
       const d = Math.floor(nowH / 24);
       if (d !== this.day) this.daily(d);
@@ -388,8 +395,8 @@ class Hive {
     }
     this.fuelSugar += fuel;
     this.fstate[i] = 1; this.timer[i] = trip; this.tripMin[i] = trip; this.fuel[i] = fuel;
-    this.wear[i] += (dist * 2 + trip * 0.08) / 800;        // ~800 km lifetime flight budget
-    this.tripsToday++;
+    this.wear[i] += this.frail[i] * (dist * 2 + trip * 0.08) / 800;        // ~800 km lifetime flight budget
+    this.tripsToday++; this.departN++;
   }
   land(i, newN, newP) {
     const R = this.rand, t = this.ftask[i], p = this.patch[i];
@@ -398,7 +405,7 @@ class Hive {
     let risk = 0.003 + (this.Tout < 13 ? 0.01 : 0) + (this.raining ? 0.03 : 0);
     if (R() < risk) { this.killBee(i); this.lostForagers++; return; }
     const trip = this.tripMin[i];
-    this.landingsH++;
+    this.landingsH++; this.landN++;
     let rest = 1 + this.unloadDelay + R() * 3;
     if (t === 4) {   // scout: did she find something?
       let tot = 0; const w = this.patches.map(P => { const v = P.bloom > 0.05 ? P.bloom * (P.nec + P.pol) / Math.pow(P.dist + 0.3, 2) : 0; tot += v; return v; });
@@ -419,6 +426,11 @@ class Hive {
     if (this.recruit[i]) { this.recruit[i] = 0; if (R() < 0.25) { this.patch[i] = -1; this.ftask[i] = 0; this.timer[i] = rest; return; } }
     let abandon;
     if (t === 2) {
+      // no cell near the brood to pack her loads into: she can't unload, and pollen foragers switch off (Camazine 1993)
+      if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) {
+        if (R() < 0.5) { this.patch[i] = -1; this.ftask[i] = 0; }
+        this.timer[i] = rest + 20; return;
+      }
       const A = P.pStock / P.pCap;
       let load = 16 * clamp(0.2 + A * 0.95, 0.1, 1); load = Math.min(load, P.pStock); P.pStock -= load;
       this.inPollen[p] += load; this.pollenToday += load;
@@ -453,18 +465,27 @@ class Hive {
     const onset = this.onset;
     let cleaners = 0, nurses = 0, storers = 0, guards = 0, foragers = 0, young = 0, matureDrones = 0;
     const larvaeRatio = (this.cnt ? this.cnt.larvae : 0) / Math.max(1, this.nWorkers);
-    const houseWear = (0.0065 + 0.05 * Math.min(0.3, larvaeRatio)) / 24;   // nursing load shortens life (vitellogenin)
+    // broodless bees keep their vitellogenin and barely age (winter "diutinus" bees live 6–8 months); nursing brood burns it
+    const houseWear = (0.0025 + 0.06 * Math.min(0.3, larvaeRatio)) / 24;
+    // behavioural development (bage) tracks brood: without brood to feed, young bees stay in the nurse-like "diutinus"
+    // state (Amdam & Omholt 2002; Mattila & Otis 2007), so winter bees are still house bees in spring and join the
+    // foraging force gradually as brood rearing picks up — rather than all at once on the first warm day
+    const dev = clamp(larvaeRatio / 0.04, 0.15, 1);
+    // background mortality; higher in the winter cluster (bees chilled at the mantle, lost on cleansing flights)
+    const baseDeath = T < 10 ? 0.0001 : 0.00005;
     const droneFly = !initial && this.hour >= 13 && this.hour < 17 && T >= 19 && !this.raining;
     const evict = this.evictDrones;
     let droneFlying = 0;
     for (let i = 0; i < this.nb; i++) {
       if (!this.alive[i]) continue;
-      if (!initial) this.bage[i] += 1 / 24;
+      if (!initial) this.bage[i] += (this.btype[i] === 0 ? dev : 1) / 24;
       const a = this.bage[i];
       if (this.btype[i] === 0) {
         if (!initial) {
-          this.wear[i] += a < onset ? houseWear : 0.01 / 24;
-          if (this.wear[i] >= 1 || R() < 0.00005) { this.killBee(i); continue; }
+          // ageing in the hive depends on workload (brood to feed), not on job title: older bees sitting in a broodless
+          // winter cluster age as slowly as any other bee; flights add their own wear on top (see startTrip)
+          this.wear[i] += this.frail[i] * (a < onset ? houseWear : 0.0025 / 24);   // only bees still doing house work carry the nursing load
+          if (this.wear[i] >= 1 || R() < baseDeath) { this.killBee(i); continue; }
         }
         if (a < onset) {
           const r = a / onset;
@@ -581,13 +602,15 @@ class Hive {
     // ---------- 6. consumption
     const clustered = T < 14;
     const homeW = this.nWorkers - this.outCount();
-    let perBee = clustered ? 0.06 + 0.006 * (15 - T) : 0.3;
+    // a wintering colony burns ~20–25 kg of honey from October to March (Seeley & Visscher 1985): ≈0.3 mg sugar per bee
+    // per hour in the cluster at 0 °C, more the colder it gets
+    let perBee = clustered ? 0.12 + 0.012 * (15 - T) : 0.3;
     let sugarNeed = homeW * perBee + this.nDrones * 1.0
       + c.larvae * 0.5 + c.dLarvae * 1.4
       + (brood > 0 && T < 32 ? brood * 0.004 * (34 - T) : 0)
       + this.fuelSugar;
     this.fuelSugar = 0;
-    const pollenNeed = c.larvae * 0.9 + c.dLarvae * 2.0 + young * 0.15;
+    const pollenNeed = c.larvae * 0.9 + c.dLarvae * 2.0 + young * 0.15 * clamp(c.larvae / 2000, 0.1, 1);
     const gotS = this.consumeSugar(sugarNeed);
     const gotP = this.consumePollen(pollenNeed);
     this.sugarUsedToday += gotS; this.pollenUsedToday += gotP;
@@ -615,7 +638,8 @@ class Hive {
       let bx = 2; for (; bx < this.nBoxes; bx++) { let u = 0; for (let sd = bx * 20; sd < bx * 20 + 20; sd++) u += ss[sd * 8 + 5]; if (u > 0) break; }
       if (bx < this.nBoxes) { let st2 = 0, dr2 = 0; for (let sd = (bx - 1) * 20; sd < bx * 20; sd++) { const o = sd * 8; st2 += ss[o + 1] + ss[o + 2]; dr2 += ss[o] + ss[o + 1] + ss[o + 2] + ss[o + 3] + ss[o + 4] + ss[o + 6]; } topFill = st2 / Math.max(1, dr2); }
     }
-    if (c.undrawn > 0 && this.nectar24 > 400e3 && (storageFree < 0.2 || topFill > 0.55) && T > 15) {
+    // (Pratt 1999: building is triggered by a strong nectar intake once the empty storage comb is getting scarce)
+    if (c.undrawn > 0 && this.nectar24 > 400e3 && (storageFree < 0.35 || topFill > 0.45 || this.storageFull) && T > 15) {
       let k = Math.floor((storers + guards * 0.5) * 0.05 + R());
       for (let j = 0; j < n && k > 0; j++) {
         const i = this.drawOrder[j];
@@ -633,9 +657,11 @@ class Hive {
       }
     }
     // ---------- 10. pollen demand signal (brood pheromone vs. stored bee-bread)
-    const target = 250e3 + pollenNeed * 24 * 4;
+    // colonies regulate bee-bread stores around ~1 kg (Fewell & Winston 1992; Camazine 1993) and lay down extra in late
+    // summer and autumn so brood rearing can restart in late winter before any pollen is flying
+    const target = (this.doy >= 200 && this.doy < 300 ? 1100e3 : 700e3) + pollenNeed * 24 * 4;
     this.pollenTotal = c.pollen;
-    this.pollenNeed = clamp(1 - c.pollen / target, 0, 1);
+    this.pollenNeed = this.noPollenRoomUntil && this.t < this.noPollenRoomUntil ? 0 : clamp(1 - c.pollen / target, 0, 1);
     // dance threshold rises when unloading is slow or storage is full
     this.danceThr = 0.1 + 0.006 * this.unloadDelay + (this.storageFull ? 0.4 : 0) - (c.sugar < 4e6 ? 0.04 : 0);
   }
@@ -728,7 +754,7 @@ class Hive {
   // Pollen foragers unload close to the brood (Johnson 2009: queen-based template) — into a part-filled bee-bread
   // cell of the same kind if one is handy, otherwise an empty cell; loads of different colours build up in layers.
   storePollen() {
-    if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) { this.inPollen.fill(0); return; }
+    if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) { for (const v of this.inPollen) this.pollenToday -= v; this.inPollen.fill(0); return; }
     const R = this.rand, st = this.st, n = this.nActive;
     let before = 0; for (let p = 0; p < this.inPollen.length; p++) before += this.inPollen[p];
     if (before < 1) return;
@@ -740,8 +766,9 @@ class Hive {
         for (let a = 0; a < 6; a++) {
           let i;
           if (this.nBrood > 0 && a < 5) {
-            const b = this.broodList[(R() * this.nBrood) | 0], side = (b / CPS) | 0, k = b - side * CPS;
-            const r = ((k / COLS) | 0) + ((R() * 9) | 0) - 4, cc = (k % COLS) + ((R() * 9) | 0) - 4;
+            // next to the brood first; if that ring is full of honey, a little further out on the same comb
+            const b = this.broodList[(R() * this.nBrood) | 0], side = (b / CPS) | 0, k = b - side * CPS, w = a < 3 ? 4 : 10;
+            const r = ((k / COLS) | 0) + ((R() * (2 * w + 1)) | 0) - w, cc = (k % COLS) + ((R() * (2 * w + 1)) | 0) - w;
             if (r < 0 || r >= ROWS || cc < 0 || cc >= COLS) continue;
             i = side * CPS + r * COLS + cc;
           } else i = (R() * n) | 0;
@@ -753,14 +780,14 @@ class Hive {
           else continue;
           if (score > bestScore) { bestScore = score; best = i; }
         }
-        if (best < 0) { if (++fails > 60) break; continue; }
+        if (best < 0) { if (++fails > 150) break; continue; }
         if (st[best] === ST.EMPTY) { st[best] = ST.POLLEN; this.pol[best] = 0; }
         const add = Math.min(POLLEN_CAP_W - this.pol[best], this.inPollen[p], chunk);
         this.pol[best] += add; this.inPollen[p] -= add; this.pcol[best] = p + 1;
       }
     }
     let after = 0; for (let p = 0; p < this.inPollen.length; p++) after += this.inPollen[p];
-    if (after > before * 0.9) { this.noPollenRoomUntil = this.t + 6; this.inPollen.fill(0); }
+    if (after > before * 0.9) { this.noPollenRoomUntil = this.t + 6; this.pollenToday -= after; this.inPollen.fill(0); }
   }
   // Consumption (Montovan et al. 2013, model 2): a bee picks a stores cell with probability ∝ 1 + D·(k−1), D = brood
   // density within two cells, k = 10 — so stores next to brood are eaten first — and takes one load. In a broodless
@@ -810,6 +837,9 @@ class Hive {
     const q = this.queen; if (!q.present || !q.laying) return 0;
     const d = this.doy, m = d / 30.42 - 0.5, i0 = ((Math.floor(m) % 12) + 12) % 12, f = m - Math.floor(m);
     let season = MONTH_LAY[i0] * (1 - f) + MONTH_LAY[(i0 + 1) % 12] * f;
+    // late winter (after the solstice, before April): brood rearing only restarts once a warm spell triggers it, then
+    // builds up at a pace set by the weather — so mild winters start early and cold ones late
+    if (d >= 355 || d < 100) season = Math.min(Math.max(season * 1.8, 0.06), this.winterDrive || 0);
     const yrs = q.ageD / 365;
     let max = 1800 * (yrs > 2 ? Math.max(0.35, 1 - 0.2 * (yrs - 2)) : 1);
     let res = 1;
@@ -1111,6 +1141,10 @@ class Hive {
 
   // ---------------------------------------------------------------- daily
   resetDay() {
+    // site fidelity fades: after several days without flying, foragers no longer return to their old patch and the
+    // foraging force has to be rebuilt by scouts and dances (true after winter or a long spell of bad weather)
+    if (this.tripsToday === 0) { if (++this.idleDays === 5) for (let i = 0; i < this.nb; i++) if (this.ftask[i] !== 4) { this.patch[i] = -1; this.ftask[i] = 0; } }
+    else this.idleDays = 0;
     this.nectarToday = 0; this.pollenToday = 0; this.waterToday = 0; this.tripsToday = 0; this.laidToday = 0; this.wantToday = 0;
     this.deathsToday = 0; this.lostForagers = 0; this.broodDeathsToday = 0; this.emergedToday = 0; this.sugarUsedToday = 0; this.pollenUsedToday = 0;
     this.chilledToday = 0; this.cellsDrawnToday = 0; this.movedToday = 0;
@@ -1123,7 +1157,7 @@ class Hive {
       brood: this.broodTotal || 0, honey: (c.honeySugar || 0) / 0.82 / 1e6, nectar: ((c.nectarSugar || 0) + (c.nectarWater || 0)) / 1e6,
       sugarKg: (c.sugar || 0) / 1e6, pollen: (c.pollen || 0) / 1e6, nectarIn: this.nectarToday / 1e6, pollenIn: this.pollenToday / 1e3,
       laid: this.laidToday, deaths: this.deathsToday, trips: this.tripsToday, temp: this.wx ? this.wx.mean : 0,
-      chilled: this.chilledToday, emerged: this.emergedToday,
+      chilled: this.chilledToday, emerged: this.emergedToday, weight: this.hiveWeight(),
     };
     this.history.push(rec); if (this.history.length > 800) this.history.shift();
     this.lastDay = rec;
@@ -1135,12 +1169,15 @@ class Hive {
     if (doy === 0) this.say(`Happy new year — year ${this.year} begins.`, 'info');
     this.genWeather(doy);
     this.frostKill = false;
+    this.winterBrood(doy);
     // drone eviction at the end of the season / dearth
     const wasEvict = this.evictDrones;
     this.evictDrones = (doy > 228 && (this.nectar24 < 150e3 || doy > 258)) || doy > 290 || doy < 60 || (this.cnt && this.cnt.sugar < 3e6) || (this.queen.present === false && false);
     if (this.queen.present === false || this.queen.virgin || this.virgins.length) this.evictDrones = false;
     if (this.evictDrones && !wasEvict && this.nDrones > 50) this.say('Workers are evicting the drones from the hive.', 'info');
     if (doy === 172) this.say('Summer solstice — the colony is near peak population.', 'info');
+    // autumn check: a colony needs ~20 kg of honey to see it through to spring
+    if ((doy === 258 || doy === 288) && this.cnt) { const hk = this.cnt.sugar / 0.82 / 1e6; if (hk < 20) this.say(`Winter stores look light (${hk.toFixed(0)} kg of honey; a colony needs ~20 kg) — a beekeeper would feed syrup now.`, 'keeper'); }
     if (doy === 102 && this.nBoxes <= 2) this.say('The spring nectar flow is starting — a beekeeper would add a honey super now, or the brood nest will fill with honey.', 'keeper');
     // swarm impulse check
     const Q = this.queen;
@@ -1163,6 +1200,37 @@ class Hive {
     }
     if (doy > 270 && this.wx.mean < 8 && this.clusterYear !== this.year) { this.say('Cold weather — bees are forming a winter cluster.', 'info'); this.clusterYear = this.year; }
     if (this.nWorkers < 300 && !this.deadMsg) { this.deadMsg = true; this.say('The colony has collapsed.', 'bad'); }
+  }
+
+  // ---- what a hive scale would read (kg): woodenware + wax comb + bees + brood + stores
+  hiveWeight() {
+    const c = this.cnt || {}, drawnFrac = 1 - (c.undrawn || 0) / Math.max(1, this.nActive);
+    const wood = 7 + 5.5 * this.nBoxes;                          // floor, inner cover & roof ≈ 7 kg; each box of 10 frames ≈ 5.5 kg
+    const wax = 1.0 * this.nBoxes * drawnFrac;                     // ~100 g of wax per drawn deep frame
+    const bees = (this.nWorkers * 0.11 + this.nDrones * 0.23) / 1000;
+    const brood = (this.broodTotal || 0) * 0.12 / 1000;
+    const stores = (c.honeySugar || 0) / 0.82 / 1e6 + ((c.nectarSugar || 0) + (c.nectarWater || 0)) / 1e6 + (c.pollen || 0) / 1e6;
+    return wood + wax + bees + brood + stores;
+  }
+
+  // ---- winter brood onset: warm spells after the solstice trigger it; cold snaps hold it back
+  winterBrood(doy) {
+    const T = this.wx.mean;
+    this.warm3 = ((this.warm3 ?? T) * 2 + T) / 3;                    // ~3-day running mean temperature
+    if (doy >= 250 && doy < 355) { this.winterDrive = 0; this.broodOnset = false; return; }
+    if (doy < 100 || doy >= 355) {
+      // Nürnberger et al. 2018: onset is mainly temperature-driven but modulated by day length and an internal clock —
+      // so the warmth needed falls as the days lengthen after the solstice (mild ~5 °C at first, below freezing by February)
+      const since = doy >= 355 ? doy - 355 : doy + 10, need = 5 - 0.22 * since;
+      if (!this.broodOnset && this.warm3 >= need) {
+        this.broodOnset = true; this.winterDrive = 0.02;
+        this.say(`A mild spell (${this.warm3.toFixed(0)} °C) has triggered the queen to start laying again — brood rearing resumes for spring.`, 'info');
+      }
+      if (this.broodOnset) {
+        if (this.warm3 < -2) this.winterDrive *= 0.8;                    // hard cold: the cluster contracts, laying slows
+        else this.winterDrive = Math.min(1, this.winterDrive + 0.004 + 0.0025 * Math.max(0, this.warm3));
+      }
+    } else this.winterDrive = 1;
   }
 
   // ---------------------------------------------------------------- beekeeper actions
