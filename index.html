@@ -1021,6 +1021,7 @@ const view = { z: 1, px: 0, py: 0 };
 const COMB_W = S3*(COLS+0.5), COMB_H = 1.5*ROWS+0.5;
 let geo = { R: 5, ox: 0, oy: 0, W: 0, H: 0, dpr: 1 };
 let sideLists = null;
+const prevComb = { side: -1, st: null };
 function layout(){
   const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
   if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); cache.width=cv.width; cache.height=cv.height; combDirty=true; }
@@ -1053,6 +1054,11 @@ function renderComb(){
   c.fillStyle = newComb ? '#e6d29a' : (sel.box===0 ? '#6e4a20' : '#86602c');
   c.fillRect(ox, oy, COMB_W*R, COMB_H*R);
   const lists = { egg:[], larva:[], capped:[], nectar:[], honey:[], pollen:[], empty:[], dirty:[], undrawn:[], brood:[] };
+  // bees that just chewed out of their cells on this face (capped brood → vacated cell)
+  if (prevComb.side===side && prevComb.st){
+    for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push(k);   // (vacated cells are often cleaned within the same hour)
+  }
+  prevComb.side = side; prevComb.st = hive.st.slice(base, base+CPS);
   const st=hive.st, rr = R*0.9, detail = R >= 4.2;
   const emptyCol = newComb ? '#cdb77c' : (sel.box===0 ? '#2f1f0d' : '#3d2a12');
   const minX = -2, maxX = W+2;
@@ -1165,8 +1171,8 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
 // ---------- bee sprites on the visible comb
 const MAXS = 650;
 const bees = {
-  list: [], dancers: [], queen: null, scale: 1,
-  reset(){ this.list=[]; this.dancers=[]; this.queen=null; },
+  list: [], dancers: [], queen: null, scale: 1, emerging: [],
+  reset(){ this.list=[]; this.dancers=[]; this.queen=null; this.emerging=[]; },
   randCell(arr){ if(!arr||!arr.length) return -1; return arr[(Math.random()*arr.length)|0]; },
   cellPos(k){ const r=(k/COLS)|0, c=k%COLS; return [cellX(r,c), cellY(r)]; },
 };
@@ -1192,7 +1198,27 @@ function pickRole(){
 }
 function newSprite(kind){
   const [x,y] = bees.cellPos((Math.random()*CPS)|0);
-  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null, alpha:0 };
+  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null };
+}
+// a point on the comb's edge: bees cross between frames over the top/sides/bottom, and
+// reach the brood box from the entrance below
+function edgePoint(){
+  const r = Math.random(), bottomBias = sel.box===0 ? 0.5 : 0.25;
+  if (r < bottomBias) return [1+Math.random()*(COMB_W-2), COMB_H-0.5];
+  if (r < bottomBias+0.15) return [1+Math.random()*(COMB_W-2), 0.5];
+  return [Math.random()<0.5 ? 0.5 : COMB_W-0.5, 1+Math.random()*(COMB_H-2)];
+}
+function enteringSprite(kind){
+  const b = newSprite(kind); const [x,y] = edgePoint(); b.x=x; b.y=y;
+  const [tx,ty] = bees.cellPos((Math.random()*CPS)|0);
+  b.tx=tx; b.ty=ty; b.a=Math.atan2(ty-y,tx-x); b.mode='walk'; b.next='rest'; b.work=1+Math.random()*3;
+  return b;
+}
+function leave(b){
+  // walk to the nearest edge, then leave this face
+  const cand = [[b.x, COMB_H-0.5],[b.x,0.5],[0.5,b.y],[COMB_W-0.5,b.y]];
+  let best=cand[0], bd=1e9; for (const c of cand){ const d=Math.hypot(c[0]-b.x,c[1]-b.y)*(c[1]>COMB_H-1&&sel.box===0?0.6:1); if(d<bd){bd=d;best=c;} }
+  b.gone=true; b.tx=best[0]; b.ty=best[1]; b.mode='walk'; b.next='exit'; b.cell=null;
 }
 function clusterCenter(){
   const L = sideLists && sideLists.brood.length ? sideLists.brood : null;
@@ -1226,12 +1252,26 @@ function updateBees(dt){
   const nW = Math.round(want.w / bees.scale), nD = Math.round(want.d / bees.scale);
   // sync counts gradually
   let cw=0, cd=0; for (const b of bees.list){ if (b.gone) continue; if(b.kind==='w') cw++; else if (b.kind==='d') cd++; }
-  for (let k=0;k<Math.min(8, nW-cw);k++) bees.list.push(newSprite('w'));
-  for (let k=0;k<Math.min(3, nD-cd);k++) bees.list.push(newSprite('d'));
-  if (cw > nW + 2){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) z.gone = true; }
-  if (cd > nD){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z) z.gone = true; }
-  for (const b of bees.list){ if (b.gone) b.alpha -= dt*1.5; else if (b.alpha<1) b.alpha = Math.min(1, (b.alpha??1) + dt*1.5); }
-  bees.list = bees.list.filter(b=>!(b.gone && b.alpha<=0));
+  if (bees.list.length===0){          // opening a frame: the bees are already there
+    for (let k=0;k<nW;k++) bees.list.push(newSprite('w'));
+    for (let k=0;k<nD;k++) bees.list.push(newSprite('d'));
+    bees.emerging.length = 0; cw = nW; cd = nD;
+  }
+  // newly emerged bees appear in the very cells they hatched from
+  while (bees.emerging.length){
+    const k = bees.emerging.pop();
+    if (Math.random() > 1/bees.scale) continue;
+    const [x,y] = bees.cellPos(k);
+    const b = newSprite('w'); b.x=x; b.y=y; b.role='cleaner'; b.mode='work'; b.t=2+Math.random()*3; b.a=Math.random()*6.28;
+    bees.list.push(b); cw++;
+  }
+  const inW = Math.min(4, nW-cw), inD = Math.min(2, nD-cd);
+  for (let k=0;k<inW;k++) if (Math.random()<0.5) bees.list.push(enteringSprite('w'));
+  for (let k=0;k<inD;k++) if (Math.random()<0.3) bees.list.push(enteringSprite('d'));
+  const outW = Math.min(4, cw - nW - 2), outD = Math.min(2, cd - nD);
+  for (let k=0;k<outW;k++){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) leave(z); }
+  for (let k=0;k<outD;k++){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z) leave(z); }
+  bees.list = bees.list.filter(b=>b.mode!=='exit');
   // role refresh slowly
   if (Math.random()<0.02 && bees.list.length){ const b=bees.list[(Math.random()*bees.list.length)|0]; if(b.kind==='w'&&b.mode!=='dance'&&b.mode!=='follow'&&b.mode!=='retinue') b.role=pickRole(); }
   // queen
@@ -1286,7 +1326,7 @@ function stepBee(b, dt){
     return;
   }
   if (b.mode==='dance' || b.mode==='follow') return;
-  if (b.mode==='walk'){ moveBee(b, dt, b.kind==='d'?3:4.5); return; }
+  if (b.mode==='walk'){ moveBee(b, dt, b.gone ? 5.5 : b.kind==='d'?3:4.5); return; }
   b.t -= dt;
   if (b.mode==='rest' && hive.Tout<12){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; }
   if (b.t <= 0) chooseTask(b);
@@ -1375,9 +1415,7 @@ function drawComb(){
   const role = colorRoles;
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
-    cx.globalAlpha = Math.max(0, Math.min(1, b.alpha ?? 1));
     drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, role: role ? ROLE_COL[b.role] : null });
-    cx.globalAlpha = 1;
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
