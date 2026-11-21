@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beehive Simulator</title>
+<style>
+:root{--bg:#15100a;--panel:#211910;--panel2:#2a2014;--line:#3d2f1c;--text:#f3e6c8;--dim:#b7a37e;--amber:#f2b134;--good:#8fcf6a;--bad:#ef6b55;--warn:#f0a03a;--info:#7fb5e6}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:8px 14px;border-bottom:1px solid var(--line);background:linear-gradient(#24190d,#1a130b);flex-wrap:wrap}
+.brand{font-size:15px;letter-spacing:.2px;white-space:nowrap}.brand b{color:var(--amber)}
+.brand i{color:var(--dim);font-style:italic;font-size:12px;margin-left:4px}
+#clock{font-variant-numeric:tabular-nums;font-size:14px;color:#fff;min-width:300px}
+#clock .wx{color:var(--dim);margin-left:8px}
+.speed{display:flex;gap:3px;margin-left:auto;flex-wrap:wrap;align-items:center}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;cursor:pointer}
+button:hover{border-color:#6b5230}button.on{background:var(--amber);color:#1a1208;border-color:var(--amber);font-weight:600}
+button:disabled{opacity:.4;cursor:default}
+main{display:grid;grid-template-columns:minmax(0,1fr) 410px;height:calc(100% - 46px)}
+#hiveCol{display:flex;flex-direction:column;min-width:0;min-height:0;padding:8px 10px 8px 12px;gap:6px}
+aside{overflow-y:auto;border-left:1px solid var(--line);padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+.ph{display:flex;align-items:baseline;gap:8px;margin:0 0 6px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--amber);margin:0;font-weight:600}
+.ph span{color:var(--dim);font-size:12px}
+#hiveMap{width:100%;height:84px;display:block;cursor:pointer}
+#combWrap{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#0f0b06}
+#comb{width:100%;height:100%;display:block;cursor:grab}
+#tip{position:absolute;pointer-events:none;background:rgba(20,14,8,.94);border:1px solid #5a4325;border-radius:6px;padding:6px 8px;font-size:12px;max-width:260px;display:none;z-index:3}
+#danceInfo{position:absolute;left:10px;bottom:8px;font-size:12px;color:#f6e7c1;background:rgba(15,10,5,.75);border-radius:6px;padding:4px 8px;max-width:70%;pointer-events:none}
+#zoomHint{position:absolute;right:10px;bottom:8px;font-size:11px;color:var(--dim);background:rgba(15,10,5,.7);border-radius:6px;padding:3px 7px;pointer-events:none}
+#legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--dim)}
+#legend span{display:inline-flex;align-items:center;gap:5px}
+#legend i{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid rgba(0,0,0,.4)}
+#land{width:100%;aspect-ratio:1/1;display:block;border-radius:6px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}
+.kv{display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px dotted #33271a}
+.kv b{font-weight:600;font-variant-numeric:tabular-nums;color:#fff}
+.sub{color:var(--dim);font-size:11.5px}
+.bars{margin-top:6px}
+.bar{display:grid;grid-template-columns:118px 1fr 52px;align-items:center;gap:6px;font-size:12px;margin:2px 0}
+.bar div{height:9px;background:#33271a;border-radius:4px;overflow:hidden}.bar div i{display:block;height:100%}
+.bar b{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+#chart{width:100%;height:160px;display:block}
+#log{max-height:240px;overflow-y:auto;font-size:12px}
+#log div{padding:3px 0;border-bottom:1px dotted #33271a}
+#log .t{color:var(--dim);font-variant-numeric:tabular-nums;margin-right:6px}
+.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.info{color:var(--info)}.swarm{color:#ffd24a;font-weight:600}.keeper{color:#d7b8ff}
+.btns{display:flex;flex-wrap:wrap;gap:5px}
+label.tg{display:inline-flex;align-items:center;gap:5px;color:var(--dim);font-size:12px;cursor:pointer;margin-right:10px}
+details summary{cursor:pointer;color:var(--amber);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+details p,details li{color:#d9c8a4;font-size:12px}
+details ul{padding-left:16px;margin:6px 0}
+#loading{position:fixed;inset:0;background:rgba(15,10,5,.92);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:10;font-size:15px}
+#loading .pb{width:280px;height:8px;background:#33271a;border-radius:4px;overflow:hidden}#loading .pb i{display:block;height:100%;background:var(--amber);width:0}
+select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font:inherit}
+@media (max-width:980px){main{grid-template-columns:1fr;height:auto}#combWrap{height:60vh;flex:none}aside{border-left:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🐝 <b>Hive</b> simulator <i>Apis mellifera</i></div>
+  <div id="clock"></div>
+  <div class="speed" id="speed"></div>
+</header>
+<main>
+  <section id="hiveCol">
+    <div class="ph"><h2>Inside the hive</h2><span id="frameLabel"></span></div>
+    <canvas id="hiveMap"></canvas>
+    <div id="combWrap"><canvas id="comb"></canvas><div id="tip"></div><div id="danceInfo"></div><div id="zoomHint">scroll to zoom · drag to pan · hover a cell</div></div>
+    <div id="legend"></div>
+  </section>
+  <aside>
+    <div class="panel">
+      <div class="ph"><h2>Outside</h2><span id="landSub">foraging range · rings every 1 km</span></div>
+      <canvas id="land"></canvas>
+      <div id="landInfo" class="sub" style="margin-top:4px"></div>
+    </div>
+    <div class="panel" id="stats"></div>
+    <div class="panel"><div class="ph"><h2>Colony over time</h2><span>last 12 months</span></div><canvas id="chart"></canvas></div>
+    <div class="panel">
+      <div class="ph"><h2>Beekeeper</h2></div>
+      <div class="btns" style="margin-bottom:6px">
+        <button id="bSuper">Add honey super</button>
+        <button id="bHarvest">Harvest honey</button>
+        <button id="bFeed">Feed 5 kg syrup</button>
+        <button id="bQueen">Introduce queen</button>
+      </div>
+      <label class="tg"><input type="checkbox" id="tSwarm" checked> Natural swarming</label>
+      <label class="tg"><input type="checkbox" id="tRole"> Colour bees by job</label>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="sub">New colony starting</span>
+        <select id="startSel"><option value="59">Mar 1 (end of winter)</option><option value="110" selected>Apr 20 (spring build-up)</option><option value="160">Jun 9 (summer peak)</option></select>
+        <button id="bNew">Start</button>
+      </div>
+    </div>
+    <div class="panel"><div class="ph"><h2>Colony events</h2></div><div id="log"></div></div>
+    <div class="panel">
+      <details><summary>What's being simulated</summary>
+      <ul>
+        <li><b>Every bee is an individual</b> with its own age, physiological wear, job and foraging memory; <b>every cell</b> (~140,000 in two deep boxes) holds its own egg, larva, pupa, nectar, honey or bee-bread. The comb view shows a live sample of the bees on the selected frame.</li>
+        <li><b>Brood development</b>: worker 3 d egg → larva capped day 9 → emerges day 21; drone 3 / 10 / 24 d; queen 3 / 8 / 16 d. Larvae are fed by nurse bees (≈3 larvae per nurse) using pollen and honey; underfed larvae are removed.</li>
+        <li><b>Age polyethism</b>: cell cleaning → nursing → food storing, comb building & capping → guarding/fanning → foraging at ~3 weeks. Forager age shifts with colony need (social inhibition by older foragers).</li>
+        <li><b>Lifespan</b> follows workload: summer bees wear out in ~5–6 weeks (foragers die after ~800 km of flight or from predators), while autumn-reared "winter bees" with little brood to feed live 4–6 months.</li>
+        <li><b>Foraging</b>: foragers fly at ~25 km/h, carry ~40 mg nectar or ~16 mg pollen, and burn sugar in flight. Profitable patches are advertised by <b>waggle dances</b> — the angle from vertical equals the angle from the sun's azimuth, and the waggle run lengthens with distance; nearby sources get short round dances. Recruits follow dances; scouts discover new flowers; poor patches are abandoned. Pollen foraging tracks brood demand.</li>
+        <li><b>Honey making</b>: nectar (30–45 % sugar) is handed to receiver bees, stored, and fanned down to ~18 % water, then capped with wax. Long unloading queues raise the dance threshold (tremble-dance effect).</li>
+        <li><b>Seasons & weather</b> (~45°N): real sun position and day length, daily temperature and rain. No flight below ~12 °C, at night or in rain. Bees cluster below ~14 °C; brood that too few bees can cover is chilled. Brood rearing stops in late autumn, drones are evicted, and the colony overwinters on stored honey.</li>
+        <li><b>Queen biology</b>: laying up to ~1,800 eggs/day by season, pollen and nurse supply; drone eggs in drone comb in spring/summer. Crowding triggers <b>swarming</b> (old queen leaves with ~half the bees), virgin queens emerge, kill rivals, take mating flights, and start laying. Queen loss triggers emergency queen cells; failure leads to laying workers.</li>
+        <li>Not modelled: varroa & disease, robbing, afterswarms, multiple-colony competition, propolis.</li>
+      </ul></details>
+    </div>
+  </aside>
+</main>
+<div id="loading"><div id="loadMsg">Preparing colony…</div><div class="pb"><i id="loadBar"></i></div></div>
+
+<script>
+'use strict';
+// ============================================================================
+//  Apis mellifera colony model — per-bee, per-cell agent simulation
+//  Time step: 10 simulated minutes (foraging), hourly (colony), daily (season)
+// ============================================================================
+const COLS = 80, ROWS = 44, CPS = COLS * ROWS;          // one side of a Langstroth deep ≈ 3,500 cells
+const FPB = 10, MAXBOX = 3, SIDES = MAXBOX * FPB * 2, NC = SIDES * CPS;
+const ST = { EMPTY: 0, DIRTY: 1, EGG: 2, LARVA: 3, CAPPED: 4, NECTAR: 5, HONEY: 6, POLLEN: 7, QCELL: 8 };
+// Development times in hours from egg laying: hatch, capping, emergence
+const DEV = [
+  { hatch: 72, cap: 216, emerge: 504 },   // worker: 3 d egg, 6 d larva, capped day 9, emerges day 21
+  { hatch: 72, cap: 240, emerge: 576 },   // drone : 3 d egg, 7 d larva, capped day 10, emerges day 24
+  { hatch: 72, cap: 192, emerge: 384 },   // queen : 3 d egg, 5 d larva, capped day 8, emerges day 16
+];
+const SUGAR_DENS = 1.59;                       // g/mL of dissolved sugar → cell volume model
+const VOL_W = 280, VOL_D = 500;                // µL usable volume of worker / drone cell
+const POLLEN_CAP_W = 150, POLLEN_CAP_D = 240;  // mg packed bee-bread per cell
+const MAXB = 110000;
+const MONTH_LAY = [0.05, 0.18, 0.42, 0.75, 1.0, 0.95, 0.78, 0.55, 0.33, 0.12, 0.01, 0.0]; // seasonal egg-laying drive (mid-month)
+
+// Forage plants (temperate ~45°N).  bloom = day-of-year window; nectar/pollen = peak supply to this colony (mg/h)
+const FLORA = [
+  { name: 'Crocus & snowdrops', s: 40, e: 85, conc: .35, nec: 1440, pol: 9900, col: '#ef7d14', d: .12 },
+  { name: 'Hazel catkins', s: 25, e: 75, conc: 0, nec: 0, pol: 13500, col: '#e3cf63' },
+  { name: 'Willow', s: 68, e: 112, conc: .33, nec: 22400, pol: 40500, col: '#f0c22c' },
+  { name: 'Maple', s: 85, e: 125, conc: .3, nec: 19200, pol: 18000, col: '#c4c062' },
+  { name: 'Dandelion meadow', s: 92, e: 150, conc: .4, nec: 41600, pol: 72000, col: '#f08a12' },
+  { name: 'Cherry & apple orchard', s: 100, e: 135, conc: .35, nec: 48000, pol: 45000, col: '#e6dcb0' },
+  { name: 'Horse chestnut', s: 115, e: 145, conc: .3, nec: 19200, pol: 27000, col: '#b3323a' },
+  { name: 'Oilseed rape field', s: 108, e: 145, conc: .45, nec: 136000, pol: 67500, col: '#f5d000' },
+  { name: 'Hawthorn hedges', s: 125, e: 155, conc: .35, nec: 28800, pol: 22500, col: '#d8cc98' },
+  { name: 'Black locust trees', s: 138, e: 162, conc: .45, nec: 176000, pol: 9000, col: '#d6c78a' },
+  { name: 'Poppies', s: 140, e: 195, conc: 0, nec: 0, pol: 36000, col: '#2b2a38' },
+  { name: 'White clover pasture', s: 150, e: 248, conc: .4, nec: 64000, pol: 45000, col: '#8a5a2b' },
+  { name: 'Bramble', s: 160, e: 215, conc: .35, nec: 44800, pol: 31500, col: '#b9b8b0' },
+  { name: 'Phacelia strip', s: 165, e: 228, conc: .35, nec: 40000, pol: 40500, col: '#3d61b8' },
+  { name: 'Linden (lime) trees', s: 172, e: 200, conc: .4, nec: 160000, pol: 22500, col: '#ebe3a6' },
+  { name: 'Fireweed', s: 185, e: 245, conc: .35, nec: 44800, pol: 27000, col: '#6b7fa8' },
+  { name: 'Sunflower field', s: 195, e: 245, conc: .4, nec: 64000, pol: 67500, col: '#f2b705' },
+  { name: 'Goldenrod', s: 222, e: 285, conc: .4, nec: 56000, pol: 54000, col: '#e3b400' },
+  { name: 'Asters', s: 240, e: 295, conc: .3, nec: 22400, pol: 36000, col: '#e8c449' },
+  { name: 'Ivy', s: 258, e: 318, conc: .45, nec: 60800, pol: 67500, col: '#f5a623' },
+];
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const DEG = Math.PI / 180;
+
+class Hive {
+  constructor(opts = {}) {
+    this.seed = opts.seed || 12345;
+    this.rand = mulberry32(this.seed);
+    this.lat = opts.lat || 45;
+    this.allowSwarm = opts.allowSwarm !== false;
+    this.log = [];
+    // ---- cells
+    this.st = new Uint8Array(NC); this.caste = new Uint8Array(NC); this.age = new Float32Array(NC);
+    this.sugar = new Float32Array(NC); this.water = new Float32Array(NC); this.pol = new Float32Array(NC);
+    this.pcol = new Uint8Array(NC); this.droneCell = new Uint8Array(NC); this.drawn = new Uint8Array(NC);
+    this.sideStats = new Float32Array(SIDES * 8);
+    // ---- bees
+    this.alive = new Uint8Array(MAXB); this.btype = new Uint8Array(MAXB); this.bage = new Float32Array(MAXB);
+    this.wear = new Float32Array(MAXB); this.ftask = new Uint8Array(MAXB); this.fstate = new Uint8Array(MAXB);
+    this.patch = new Int16Array(MAXB).fill(-1); this.timer = new Float32Array(MAXB); this.tripMin = new Float32Array(MAXB);
+    this.fuel = new Float32Array(MAXB); this.recruit = new Uint8Array(MAXB);
+    this.free = []; this.nb = 0;
+    this.queenCells = [];
+    this.init(opts.startDoy || 59);
+  }
+  rnd() { return this.rand(); }
+  say(msg, kind = '') { this.log.push({ t: this.t, msg, kind }); if (this.log.length > 300) this.log.shift(); }
+
+  // ---------------------------------------------------------------- geometry
+  sideOf(i) { return (i / CPS) | 0; }
+  boxOf(i) { return (i / (CPS * 20)) | 0; }
+  buildOrders() {
+    const n = this.nBoxes * 20 * CPS;
+    const bk = new Float32Array(n), hk = new Float32Array(n);
+    const cx = 39.5, cy = 42, cz = 4.5 * 6.5;
+    for (let i = 0; i < n; i++) {
+      const side = (i / CPS) | 0, b = (side / 20) | 0, f = ((side % 20) / 2) | 0, s = side & 1;
+      const k = i % CPS, r = (k / COLS) | 0, c = k % COLS;
+      const yUp = b * ROWS + (ROWS - 1 - r);
+      const z = f * 6.5 + (s ? 1.2 : -1.2);
+      const dx = c - cx, dy = (yUp - cy) * 1.15, dz = z - cz;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      bk[i] = d + this.hash(i) * 1.5;                // brood nest: nearest to centre first
+      hk[i] = -(d + 0.9 * (yUp - cy)) + this.hash(i * 7) * 2; // honey: highest/outermost first
+    }
+    const idx = () => { const a = new Int32Array(n); for (let i = 0; i < n; i++) a[i] = i; return a; };
+    this.broodOrder = idx().sort((a, b) => bk[a] - bk[b]);
+    this.honeyOrder = idx().sort((a, b) => hk[a] - hk[b]);
+    this.nActive = n;
+  }
+  hash(i) { let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
+
+  // ---------------------------------------------------------------- bees
+  addBee(type, age, wear) {
+    let i = this.free.length ? this.free.pop() : (this.nb < MAXB ? this.nb++ : -1);
+    if (i < 0) return -1;
+    this.alive[i] = 1; this.btype[i] = type; this.bage[i] = age; this.wear[i] = wear;
+    this.ftask[i] = 0; this.fstate[i] = 0; this.patch[i] = -1; this.timer[i] = 0; this.recruit[i] = 0;
+    if (type === 0) this.nWorkers++; else this.nDrones++;
+    return i;
+  }
+  killBee(i) {
+    if (!this.alive[i]) return;
+    if (this.fstate[i] === 1) this.unflight(i);
+    this.alive[i] = 0; this.free.push(i);
+    if (this.btype[i] === 0) this.nWorkers--; else this.nDrones--;
+    this.deathsToday++;
+  }
+  unflight(i) {
+    const p = this.patch[i], t = this.ftask[i];
+    if (t === 4) this.flyScout--; else if (t === 3) this.flyW--; else if (p >= 0) { if (t === 2) this.flyP[p]--; else this.flyN[p]--; }
+    this.fstate[i] = 0;
+  }
+
+  // ---------------------------------------------------------------- setup
+  init(startDoy) {
+    const R = () => this.rnd();
+    this.t = startDoy * 24 + 7;   // hours since Jan 1, year 1
+    this.nBoxes = 2; this.excluder = false;
+    this.nWorkers = 0; this.nDrones = 0;
+    // comb: drone comb at the lower corners of every frame, all deeps drawn
+    for (let i = 0; i < NC; i++) {
+      const k = i % CPS, r = (k / COLS) | 0, c = k % COLS;
+      const edge = 34 + ((this.hash(i % COLS + 999) * 3) | 0);
+      this.droneCell[i] = (r >= edge && (c < 12 + (this.hash(r) * 3 | 0) || c >= 67 - (this.hash(r + 50) * 3 | 0))) ? 1 : 0;
+      this.drawn[i] = this.boxOf(i) < 2 ? 1 : 0;
+    }
+    this.buildOrders();
+    // patches
+    this.patches = FLORA.map((f, k) => {
+      const dist = f.d || (0.25 + 3.4 * Math.pow(R(), 1.2));
+      const az = R() * 360;
+      return Object.assign({}, f, { id: k, dist, az, x: Math.sin(az * DEG) * dist, y: -Math.cos(az * DEG) * dist, bloom: 0, nStock: 0, pStock: 0 });
+    });
+    const waz = R() * 360;
+    this.creek = { name: 'Creek', dist: 0.35, az: waz, x: Math.sin(waz * DEG) * .35, y: -Math.cos(waz * DEG) * .35 };
+    const NP = this.patches.length;
+    this.flyN = new Int32Array(NP); this.flyP = new Int32Array(NP); this.flyW = 0; this.flyScout = 0; this.flyDrones = 0;
+    this.danceN = new Float32Array(NP); this.danceP = new Float32Array(NP);
+    this.inPollen = new Float32Array(NP);
+    // queen
+    this.queen = { present: true, mated: true, ageD: 365, laying: true, virgin: false, vAge: 0, flights: 0, layFrom: 0, droneLayer: false };
+    this.queenlessH = 0; this.layingWorkers = false; this.swarmPrep = false; this.swarmEvent = null;
+    // buffers & counters
+    this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
+    this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
+    this.day = Math.floor(this.t / 24); this.anom = 0;
+    this.history = []; this.resetDay();
+    this.genWeather(this.day % 365);
+    // brood: queen has been ramping up since late January
+    for (let k = 23; k >= 0; k--) {
+      const n = Math.round(Math.max(60, 380 - 13 * k));
+      let placed = 0;
+      for (let j = 0; j < this.nActive && placed < n; j++) {
+        const i = this.broodOrder[j];
+        if (this.st[i] !== ST.EMPTY || this.droneCell[i]) continue;
+        const a = k * 24 + R() * 24; if (a >= 504) { placed++; continue; }
+        this.st[i] = a < 72 ? ST.EGG : a < 216 ? ST.LARVA : ST.CAPPED; this.caste[i] = 0; this.age[i] = a; placed++;
+      }
+    }
+    // stores: ~10 kg honey left after winter, a little bee-bread
+    let honey = 10e6;
+    for (let j = 0; j < this.nActive && honey > 0; j++) {
+      const i = this.honeyOrder[j]; if (!this.drawn[i] || this.st[i] !== ST.EMPTY) continue;
+      const m = this.droneCell[i] ? 720 : 402;
+      this.st[i] = ST.HONEY; this.sugar[i] = m * .82; this.water[i] = m * .18; honey -= m;
+    }
+    this.placePollen(-1, 900e3, 0);
+    for (let i = 0; i < NC; i++) if (this.st[i] === ST.POLLEN && this.pcol[i] === 0) this.pcol[i] = 1 + (this.hash(i) * 2 | 0);
+    // ~11,000 overwintered workers ("winter bees", physiologically worn)
+    for (let k = 0; k < 11000; k++) this.addBee(0, 110 + R() * 70, 0.35 + R() * 0.35);
+    this.hourly(true);
+  }
+
+  // ---------------------------------------------------------------- environment
+  get hour() { return this.t % 24; }
+  get doy() { return Math.floor(this.t / 24) % 365; }
+  get year() { return Math.floor(this.t / 24 / 365) + 1; }
+  decl(doy) { return 23.44 * Math.sin(2 * Math.PI * (284 + doy) / 365); }
+  dayLength(doy) {
+    const x = -Math.tan(this.lat * DEG) * Math.tan(this.decl(doy) * DEG);
+    return 2 * Math.acos(clamp(x, -1, 1)) / DEG / 15;
+  }
+  sunPos(doy, h) {
+    const d = this.decl(doy) * DEG, phi = this.lat * DEG, H = 15 * (h - 12) * DEG;
+    const el = Math.asin(Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(H));
+    const A = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(d) * Math.cos(phi));
+    return { el: el / DEG, az: (A / DEG + 180 + 360) % 360 };
+  }
+  genWeather(doy) {
+    const R = () => this.rnd(); const g = () => (R() + R() + R() + R() - 2) * 1.73;
+    this.anom = 0.72 * this.anom + 2.4 * g();
+    const base = 11 - 10.5 * Math.cos(2 * Math.PI * (doy - 18) / 365);
+    const pRain = 0.31 + 0.14 * Math.cos(2 * Math.PI * (doy - 15) / 365);
+    const rain = R() < pRain;
+    this.wx = {
+      mean: base + this.anom - (rain ? 1.5 : 0),
+      amp: (4 + 3.5 * Math.max(0, Math.sin(2 * Math.PI * (doy - 80) / 365)) + 1) * (rain ? 0.6 : 1),
+      rain, rs: R() * 20, rl: 2 + R() * 12, cloud: rain ? 0.9 : R() * 0.7,
+    };
+  }
+  tempAt(h) { return this.wx.mean + this.wx.amp * Math.cos(2 * Math.PI * (h - 15) / 24); }
+  updateEnv() {
+    const h = this.hour, doy = this.doy;
+    this.Tout = this.tempAt(h);
+    this.raining = this.wx.rain && h >= this.wx.rs && h < this.wx.rs + this.wx.rl;
+    const dl = this.dayLength(doy); this.sunrise = 12 - dl / 2; this.sunset = 12 + dl / 2;
+    this.isDay = h > this.sunrise + 0.4 && h < this.sunset - 0.4;
+    const sp = this.sunPos(doy, h); this.sunAz = sp.az; this.sunEl = sp.el;
+    this.canFly = this.isDay && this.Tout >= 12 && !this.raining;
+  }
+  updatePatches(dtH) {
+    const doy = this.doy, h = this.hour, T = this.Tout;
+    const tf = clamp((T - 8) / 10, 0, 1) * (T > 32 ? 0.7 : 1);
+    const dn = Math.max(0, Math.sin(Math.PI * (h - 6) / 14));
+    const dp = Math.max(0, Math.sin(Math.PI * (h - 6) / 11));
+    for (const p of this.patches) {
+      let b = 0;
+      if (doy >= p.s && doy <= p.e) b = Math.pow(Math.sin(Math.PI * (doy - p.s) / (p.e - p.s)), 0.6);
+      if (this.frostKill && p.s < doy) b *= 0.3;
+      p.bloom = b;
+      const nCap = p.nec * b * 3 + 1, pCap = p.pol * b * 3 + 1;
+      p.nCap = nCap; p.pCap = pCap;
+      p.nStock = Math.min(nCap, p.nStock + p.nec * b * dn * tf * dtH * (this.raining ? 0 : 1));
+      p.pStock = Math.min(pCap, p.pStock + p.pol * b * dp * tf * dtH * (this.raining ? 0 : 1));
+      if (this.raining) { p.nStock *= Math.pow(0.85, dtH); p.pStock *= Math.pow(0.8, dtH); }
+    }
+  }
+
+  // ---------------------------------------------------------------- main loop
+  advance(hours, budgetMs = 30) {
+    const t0 = (typeof performance !== 'undefined' ? performance : Date).now();
+    const dt = 10 / 60; let done = 0;
+    while (done < hours - 1e-9) {
+      this.tick(dt); done += dt;
+      if ((typeof performance !== 'undefined' ? performance : Date).now() - t0 > budgetMs) break;
+    }
+    return done;
+  }
+  tick(dt) {
+    const prevH = Math.floor(this.t + 1e-6);
+    this.t += dt;
+    const nowH = Math.floor(this.t + 1e-6);
+    this.updateEnv();
+    this.updatePatches(dt);
+    this.forage(dt * 60);
+    if (nowH !== prevH) {
+      const d = Math.floor(nowH / 24);
+      if (d !== this.day) this.daily(d);
+      this.hourly(false);
+    }
+  }
+
+  // ---------------------------------------------------------------- foraging (10-min tick)
+  forage(dtMin) {
+    const NP = this.patches.length;
+    const out = this.flyScout + this.flyW + this.flyN.reduce((a, b) => a + b, 0) + this.flyP.reduce((a, b) => a + b, 0);
+    if (!this.canFly && out === 0) { this.danceN.fill(0); this.danceP.fill(0); return; }
+    const dN = this.danceN, dP = this.danceP;
+    let totN = 0, totP = 0; for (let p = 0; p < NP; p++) { totN += dN[p]; totP += dP[p]; }
+    const tot = totN + totP;
+    const newN = new Float32Array(NP), newP = new Float32Array(NP);
+    const pFollow = this.canFly ? Math.min(0.4, tot / (tot + 350)) : 0;
+    const pScout = this.canFly ? (tot < 30 ? 0.03 : 0.004) : 0;
+    const pWater = this.canFly ? this.waterNeedF * 0.08 : 0;
+    const onset = this.onset, R = this.rand;
+    for (let i = 0; i < this.nb; i++) {
+      if (!this.alive[i] || this.btype[i] !== 0) continue;
+      if (this.fstate[i] === 1) {
+        this.timer[i] -= dtMin;
+        if (this.timer[i] <= 0) this.land(i, newN, newP);
+        continue;
+      }
+      if (this.bage[i] < onset) continue;
+      if (this.timer[i] > 0) { this.timer[i] -= dtMin; continue; }
+      if (!this.canFly) continue;
+      const p = this.patch[i];
+      if (p >= 0 && this.ftask[i] !== 4) {
+        if (this.ftask[i] === 3 || this.patches[p].bloom > 0.02) { this.startTrip(i); continue; }
+        this.patch[i] = -1; this.ftask[i] = 0;
+      }
+      const r = R();
+      if (r < pFollow) {
+        let x = R() * tot, chosen = -1, pol = false;
+        for (let q = 0; q < NP && chosen < 0; q++) { x -= dN[q]; if (x <= 0) chosen = q; else { x -= dP[q]; if (x <= 0) { chosen = q; pol = true; } } }
+        if (chosen < 0) chosen = 0;
+        this.patch[i] = chosen; this.ftask[i] = pol ? 2 : 1; this.recruit[i] = 1;
+        this.startTrip(i);
+      } else if (r < pFollow + pScout) {
+        this.ftask[i] = 4; this.patch[i] = -1; this.startTrip(i);
+      } else if (r < pFollow + pScout + pWater) {
+        this.ftask[i] = 3; this.patch[i] = 0; this.startTrip(i);
+      } else this.timer[i] = 10 + R() * 30;   // idle on the comb ("reserve" foragers)
+    }
+    this.danceN = newN; this.danceP = newP;
+  }
+  startTrip(i) {
+    const R = this.rand, t = this.ftask[i];
+    let trip, fuel, dist;
+    if (t === 4) { trip = 30 + R() * 60; dist = 1.5; fuel = 3; this.flyScout++; }
+    else if (t === 3) { dist = this.creek.dist; trip = dist * 4.8 + 4 + R() * 3; fuel = dist * 1.0; this.flyW++; }
+    else {
+      const P = this.patches[this.patch[i]]; dist = P.dist;
+      const A = t === 2 ? P.pStock / P.pCap : P.nStock / P.nCap;
+      const handling = t === 2 ? 10 + 22 * (1 - A) : 16 + 32 * (1 - A);
+      trip = dist * 4.8 + handling * (0.8 + R() * 0.4);   // 25 km/h cruising
+      if (this.recruit[i]) trip *= 1.3;                     // recruits must search for the site
+      fuel = dist * 2 * 0.5 + handling * 0.04;             // ≈0.5 mg sugar per km of flight
+      if (t === 2) this.flyP[this.patch[i]]++; else this.flyN[this.patch[i]]++;
+    }
+    this.fuelSugar += fuel;
+    this.fstate[i] = 1; this.timer[i] = trip; this.tripMin[i] = trip; this.fuel[i] = fuel;
+    this.wear[i] += (dist * 2 + trip * 0.08) / 800;        // ~800 km lifetime flight budget
+    this.tripsToday++;
+  }
+  land(i, newN, newP) {
+    const R = this.rand, t = this.ftask[i], p = this.patch[i];
+    this.unflight(i);
+    // flight hazards: predators, cold-stunning, getting caught in rain
+    let risk = 0.003 + (this.Tout < 13 ? 0.01 : 0) + (this.raining ? 0.03 : 0);
+    if (R() < risk) { this.killBee(i); this.lostForagers++; return; }
+    const trip = this.tripMin[i];
+    this.landingsH++;
+    let rest = 1 + this.unloadDelay + R() * 3;
+    if (t === 4) {   // scout: did she find something?
+      let tot = 0; const w = this.patches.map(P => { const v = P.bloom > 0.05 ? P.bloom * (P.nec + P.pol) / Math.pow(P.dist + 0.3, 2) : 0; tot += v; return v; });
+      if (tot > 0 && R() < 0.45) {
+        let x = R() * tot, q = 0; for (; q < w.length - 1; q++) { x -= w[q]; if (x <= 0) break; }
+        const P = this.patches[q];
+        const wantPollen = P.pol > 0 && (P.nec === 0 || R() < this.pollenNeed * 0.8);
+        this.patch[i] = q; this.ftask[i] = wantPollen ? 2 : 1;
+      } else { this.ftask[i] = 0; this.patch[i] = -1; }
+      this.timer[i] = rest; return;
+    }
+    if (t === 3) {   // water
+      this.waterStore += 30; this.waterToday += 30;
+      if (this.waterNeedF < 0.05 && R() < 0.4) { this.ftask[i] = 0; this.patch[i] = -1; }
+      this.timer[i] = rest; return;
+    }
+    const P = this.patches[p];
+    if (this.recruit[i]) { this.recruit[i] = 0; if (R() < 0.25) { this.patch[i] = -1; this.ftask[i] = 0; this.timer[i] = rest; return; } }
+    let abandon;
+    if (t === 2) {
+      const A = P.pStock / P.pCap;
+      let load = 16 * clamp(0.2 + A * 0.95, 0.1, 1); load = Math.min(load, P.pStock); P.pStock -= load;
+      this.inPollen[p] += load; this.pollenToday += load;
+      const rate = load / trip, needF = 2 * this.pollenNeed;
+      const c = clamp((rate * needF - 0.15) * 90, 0, 50); newP[p] += c;
+      abandon = 0.02 + 0.5 * clamp((0.15 - rate) / 0.15, 0, 1) + 0.5 * (1 - this.pollenNeed);
+    } else {
+      if (this.inSugar > 2.5e5) {   // nowhere to unload: receivers refuse, forager gives up
+        if (R() < 0.4) { this.patch[i] = -1; this.ftask[i] = 0; }
+        this.timer[i] = rest + 20; return;
+      }
+      const A = P.nStock / P.nCap;
+      let load = 40 * clamp(0.2 + A * 0.95, 0.1, 1); let sug = load * P.conc;
+      if (sug > P.nStock) { sug = P.nStock; load = sug / Math.max(.05, P.conc); }
+      P.nStock -= sug;
+      this.inSugar += sug; this.inWater += load - sug; this.nectarToday += load;
+      const rate = (sug - this.fuel[i]) / trip;     // net energetic gain, mg sugar / min
+      const c = clamp((rate - this.danceThr) * 130, 0, 60); newN[p] += c;
+      abandon = 0.015 + 0.55 * clamp((0.1 - rate) / 0.1, 0, 1);
+      rest += this.unloadDelay;
+    }
+    if (R() < abandon) { this.patch[i] = -1; this.ftask[i] = 0; }
+    this.timer[i] = rest;
+  }
+
+  // ---------------------------------------------------------------- hourly colony processes
+  hourly(initial) {
+    const R = this.rand, st = this.st, age = this.age;
+    this.updateEnv();
+    const T = this.Tout;
+    // ---------- 1. adult bees: ageing, physiological wear, death, roles
+    const onset = this.onset;
+    let cleaners = 0, nurses = 0, storers = 0, guards = 0, foragers = 0, young = 0, matureDrones = 0;
+    const larvaeRatio = (this.cnt ? this.cnt.larvae : 0) / Math.max(1, this.nWorkers);
+    const houseWear = (0.0065 + 0.05 * Math.min(0.3, larvaeRatio)) / 24;   // nursing load shortens life (vitellogenin)
+    const droneFly = !initial && this.hour >= 13 && this.hour < 17 && T >= 19 && !this.raining;
+    const evict = this.evictDrones;
+    let droneFlying = 0;
+    for (let i = 0; i < this.nb; i++) {
+      if (!this.alive[i]) continue;
+      if (!initial) this.bage[i] += 1 / 24;
+      const a = this.bage[i];
+      if (this.btype[i] === 0) {
+        if (!initial) {
+          this.wear[i] += a < onset ? houseWear : 0.01 / 24;
+          if (this.wear[i] >= 1 || R() < 0.00005) { this.killBee(i); continue; }
+        }
+        if (a < onset) {
+          const r = a / onset;
+          if (r < 0.12) cleaners++; else if (r < 0.55) nurses++; else if (r < 0.85) storers++; else guards++;
+          if (a < 12) young++;
+        } else foragers++;
+      } else {
+        if (!initial) {
+          this.wear[i] += 1 / 40 / 24;
+          if (this.wear[i] >= 1 || (evict && R() < 0.012) || R() < 0.0004) { this.killBee(i); continue; }
+          if (droneFly && a >= 12) { droneFlying++; if (R() < 0.012) { this.killBee(i); continue; } }
+        }
+        if (a >= 12) matureDrones++;
+      }
+    }
+    this.flyDrones = droneFlying;
+    const house = cleaners + nurses + storers + guards;
+    this.roles = { cleaners, nurses, storers, guards, foragers, young, matureDrones };
+    // social inhibition: forager shortage → precocious foraging; surplus → delayed
+    const fR = foragers / Math.max(1, this.nWorkers);
+    this.onset += (clamp(21 + 40 * (fR - 0.32), 6, 42) - this.onset) * 0.05;
+
+    // ---------- 2. brood & comb pass
+    const c = this.cnt = { eggs: 0, larvae: 0, dLarvae: 0, capped: 0, dCapped: 0, dirty: 0, sugar: 0, water: 0, honeySugar: 0, nectarSugar: 0, nectarWater: 0, pollen: 0, emptyDrawn: 0, undrawn: 0, honeyCells: 0, excess: 0, emergedW: 0, emergedD: 0, qEggs: 0 };
+    const nurseCap = (nurses + 0.5 * (storers + guards + cleaners) + 0.25 * foragers) * 3;
+    const prevL = this.prevLarvae || 1;
+    let fed = Math.min(1, nurseCap / prevL);
+    // nurses buffer a pollen gap from their own protein reserves for ~1.5 days, then brood is cannibalised
+    if (this.pollenTotal !== undefined && this.pollenTotal < 1000 && this.pollenToday < 500) this.noPollenH = (this.noPollenH || 0) + 1; else this.noPollenH = 0;
+    if (this.noPollenH > 36) fed *= 0.65;
+    if (this.starving) fed *= 0.3;
+    this.fedFrac = fed;
+    const pLarvaDie = initial ? 0 : 0.025 * Math.pow(1 - fed, 1.5);
+    const pEggEat = (!initial && fed < 0.5) ? 0.01 : 0;
+    const evap = this.evapFrac, buildersOK = storers + guards > 0;
+    const ss = this.sideStats; ss.fill(0);
+    const n = this.nActive;
+    for (let i = 0; i < n; i++) {
+      const s = st[i];
+      const sd = ((i / CPS) | 0) * 8;
+      if (s === ST.EMPTY) { if (this.drawn[i]) { c.emptyDrawn++; ss[sd + 4]++; } else { c.undrawn++; ss[sd + 5]++; } continue; }
+      if (s === ST.HONEY) { c.honeySugar += this.sugar[i]; c.sugar += this.sugar[i]; c.honeyCells++; ss[sd + 1]++; continue; }
+      if (s === ST.NECTAR) {
+        let w = this.water[i]; const sg = this.sugar[i];
+        const ex = w - sg * 0.2195;          // excess over 18 % water
+        if (ex > 0 && !initial) { w -= ex * evap; this.water[i] = w; c.excess += ex; }
+        const conc = sg / (sg + w);
+        const vol = sg / SUGAR_DENS + w, cap = this.droneCell[i] ? VOL_D : VOL_W;
+        if (conc >= 0.8 && vol >= cap * 0.8 && buildersOK) { st[i] = ST.HONEY; c.honeySugar += sg; c.honeyCells++; ss[sd + 1]++; }
+        else { c.nectarSugar += sg; c.nectarWater += w; ss[sd + 2]++; }
+        c.sugar += sg; continue;
+      }
+      if (s === ST.POLLEN) { c.pollen += this.pol[i]; ss[sd + 3]++; continue; }
+      if (s === ST.DIRTY) { c.dirty++; ss[sd + 6]++; continue; }
+      if (s === ST.QCELL) continue;
+      // brood
+      const cs = this.caste[i], D = DEV[cs];
+      if (!initial) age[i] += 1;
+      const a = age[i];
+      ss[sd]++;
+      if (s === ST.EGG) {
+        if (pEggEat && R() < pEggEat) { st[i] = ST.EMPTY; continue; }
+        if (a >= D.hatch) st[i] = ST.LARVA;
+        c.eggs++;
+      } else if (s === ST.LARVA) {
+        if (pLarvaDie && R() < pLarvaDie) { st[i] = ST.EMPTY; this.broodDeathsToday++; continue; }
+        if (a >= D.cap) st[i] = ST.CAPPED;
+        if (cs === 1) c.dLarvae++; else c.larvae++;
+      } else if (s === ST.CAPPED) {
+        if (a >= D.emerge) {
+          st[i] = ST.DIRTY; c.dirty++;
+          const wr = -0.15 * R();
+          if (cs === 1) { this.addBee(1, 0, wr); c.emergedD++; } else { this.addBee(0, 0, wr); c.emergedW++; }
+          continue;
+        }
+        if (cs === 1) c.dCapped++; else c.capped++;
+      }
+    }
+    this.prevLarvae = c.larvae + c.dLarvae * 2.5;
+    this.emergedToday += c.emergedW + c.emergedD;
+    const brood = c.eggs + c.larvae + c.dLarvae + c.capped + c.dCapped;
+    this.broodTotal = brood;
+    if (initial) { this.pollenTotal = c.pollen; return; }
+
+    // ---------- 3. nectar ripening capacity (fanning) for next hour
+    const evapCap = house * 6 * clamp((T + 10) / 30, 0.3, 1.2);   // mg water/h a colony can drive off
+    this.evapFrac = c.excess > 0 ? clamp(evapCap / c.excess, 0, 0.08) : 0.08;
+
+    // ---------- 4. queen
+    this.queenHour(c, nurseCap);
+
+    // ---------- 5. receiving & storing incoming food
+    if (this.feeder > 0) { const m = Math.min(this.feeder, 1.2e6); this.feeder -= m; this.inSugar += m * .67; this.inWater += m * .33; }
+    const unloadCap = (storers + 0.3 * guards + 0.15 * foragers) * 10 + 1;
+    this.unloadDelay = 1 + 25 * clamp(this.landingsH / unloadCap - 0.7, 0, 1);   // long waits → tremble dance
+    this.landingsH = 0;
+    this.storeNectar();
+    this.storePollen();
+
+    // ---------- 6. consumption
+    const clustered = T < 14;
+    const homeW = this.nWorkers - this.outCount();
+    let perBee = clustered ? 0.06 + 0.006 * (15 - T) : 0.3;
+    let sugarNeed = homeW * perBee + this.nDrones * 1.0
+      + c.larvae * 0.5 + c.dLarvae * 1.4
+      + (brood > 0 && T < 32 ? brood * 0.004 * (34 - T) : 0)
+      + this.fuelSugar;
+    this.fuelSugar = 0;
+    const pollenNeed = c.larvae * 0.9 + c.dLarvae * 2.0 + young * 0.15;
+    const gotS = this.consumeSugar(sugarNeed);
+    const gotP = this.consumePollen(pollenNeed);
+    this.sugarUsedToday += gotS; this.pollenUsedToday += gotP;
+    const deficit = sugarNeed > 0 ? 1 - gotS / sugarNeed : 0;
+    this.starving = deficit > 0.2;
+    if (this.starving) {
+      for (let i = 0; i < this.nb; i++) if (this.alive[i] && R() < 0.04 * deficit) this.killBee(i);
+      if (!this.starveMsg || this.t - this.starveMsg > 72) { this.say('Colony is out of honey — bees are starving.', 'bad'); this.starveMsg = this.t; }
+    }
+    // ---------- 7. water economy
+    const needW = (T > 30 ? homeW * 0.03 * (T - 30) : 0) + (this.nectarToday < 200e3 ? c.larvae * 0.05 : 0);
+    const useW = Math.min(this.waterStore, needW); this.waterStore -= useW;
+    this.waterStore *= 0.97;
+    this.waterNeedF = needW > 0 ? clamp(1 - this.waterStore / (needW * 3), 0, 1) : 0;
+
+    // ---------- 8. cleaning cells & comb building
+    let toClean = Math.floor((cleaners + 0.3 * (nurses + storers)) * 1.5);
+    if (c.dirty > 0 && toClean > 0) {
+      for (let j = 0; j < n && toClean > 0; j++) { const i = this.broodOrder[j]; if (st[i] === ST.DIRTY) { st[i] = ST.EMPTY; toClean--; } }
+    }
+    const storageFree = c.emptyDrawn / Math.max(1, n - c.undrawn);
+    if (c.undrawn > 0 && this.nectar24 > 400e3 && storageFree < 0.2 && T > 15) {
+      let k = Math.floor((storers + guards * 0.5) * 0.05 + R());
+      for (let j = 0; j < n && k > 0; j++) {
+        const i = this.broodOrder[j];
+        if (!this.drawn[i]) { this.drawn[i] = 1; k--; this.consumeSugar(100); this.cellsDrawnToday++; }
+      }
+    }
+    // ---------- 9. thermoregulation: brood the bees cannot cover gets chilled
+    if (T < 18) {
+      const warmable = homeW * 2.3;
+      if (brood > warmable) {
+        let kill = Math.ceil((brood - warmable) * 0.15);
+        for (let j = n - 1; j >= 0 && kill > 0; j--) {
+          const i = this.broodOrder[j], s = st[i];
+          if (s === ST.EGG || s === ST.LARVA || s === ST.CAPPED) { st[i] = ST.DIRTY; kill--; this.broodDeathsToday++; this.chilledToday++; }
+        }
+      }
+    }
+    // ---------- 10. pollen demand signal (brood pheromone vs. stored bee-bread)
+    const target = 250e3 + pollenNeed * 24 * 4;
+    this.pollenTotal = c.pollen;
+    this.pollenNeed = clamp(1 - c.pollen / target, 0, 1);
+    // dance threshold rises when unloading is slow or storage is full
+    this.danceThr = 0.1 + 0.006 * this.unloadDelay + (this.storageFull ? 0.4 : 0) - (c.sugar < 4e6 ? 0.04 : 0);
+  }
+  outCount() { return this.flyScout + this.flyW + this.flyN.reduce((a, b) => a + b, 0) + this.flyP.reduce((a, b) => a + b, 0); }
+
+  storeNectar() {
+    if (this.inSugar < 1e5) this.storageFull = false;
+    if (this.inSugar < 1) return;
+    if (this.noRoomUntil && this.t < this.noRoomUntil) { this.storageFull = this.inSugar > 1e5; if (this.inSugar > 3e5) { const f = 3e5 / this.inSugar; this.inSugar *= f; this.inWater *= f; } return; }
+    const st = this.st, ord = this.honeyOrder, n = this.nActive;
+    const S0 = this.inSugar;
+    let S = this.inSugar, W = this.inWater;
+    const conc = S / (S + W);
+    const perMgVol = conc / SUGAR_DENS + (1 - conc);
+    for (let j = 0; j < n && S > 1; j++) {
+      const i = ord[j], s = st[i];
+      if (!this.drawn[i] || (s !== ST.EMPTY && s !== ST.NECTAR)) continue;
+      const cap = this.droneCell[i] ? VOL_D : VOL_W;
+      const vol = s === ST.NECTAR ? this.sugar[i] / SUGAR_DENS + this.water[i] : 0;
+      const room = cap - vol; if (room < 15) continue;
+      const mass = Math.min(room / perMgVol, (S + W));
+      const ds = mass * conc, dw = mass - ds;
+      if (s === ST.EMPTY) { st[i] = ST.NECTAR; this.sugar[i] = 0; this.water[i] = 0; }
+      this.sugar[i] += ds; this.water[i] += dw; S -= ds; W -= dw;
+    }
+    this.storageFull = S > 1e5;
+    this.noRoomUntil = (S0 - S) < 1000 ? this.t + 6 : 0;
+    if (S > 3e5) { const f = 3e5 / S; S *= f; W *= f; }   // bees can only hold so much in their crops
+    if (this.storageFull && (!this.fullMsg || this.t - this.fullMsg > 24 * 5)) { this.say('No room left to store nectar — the hive is honey-bound (a beekeeper would add a super).', 'warn'); this.fullMsg = this.t; }
+    this.inSugar = Math.max(0, S); this.inWater = Math.max(0, W);
+  }
+  placePollen(p, amount, start) {
+    const st = this.st, ord = this.broodOrder, n = this.nActive;
+    for (let j = start; j < n && amount > 1; j++) {
+      const i = ord[j], s = st[i];
+      if (!this.drawn[i] || this.droneCell[i] || this.boxOf(i) === 2) continue;
+      if (s === ST.EMPTY || (s === ST.POLLEN && this.pol[i] < POLLEN_CAP_W)) {
+        if (s === ST.EMPTY) { st[i] = ST.POLLEN; this.pol[i] = 0; }
+        const add = Math.min(POLLEN_CAP_W - this.pol[i], amount);
+        this.pol[i] += add; amount -= add; if (p >= 0) this.pcol[i] = p + 1;
+      }
+    }
+    return amount;
+  }
+  storePollen() {
+    if (this.noPollenRoomUntil && this.t < this.noPollenRoomUntil) { this.inPollen.fill(0); return; }
+    let before = 0; for (let p = 0; p < this.inPollen.length; p++) before += this.inPollen[p];
+    if (before < 1) return;
+    const start = Math.min(this.nActive - 1, Math.floor((this.broodTotal || 0) * 1.08) + 300);
+    for (let p = 0; p < this.inPollen.length; p++) {
+      if (this.inPollen[p] < 1) continue;
+      this.inPollen[p] = this.placePollen(p, this.inPollen[p], start);
+      if (this.inPollen[p] > 0) this.inPollen[p] = this.placePollen(p, this.inPollen[p], 0);
+    }
+    let after = 0; for (let p = 0; p < this.inPollen.length; p++) after += this.inPollen[p];
+    if (after > before * 0.9) { this.noPollenRoomUntil = this.t + 6; this.inPollen.fill(0); }
+  }
+  consumeSugar(need) {
+    let got = 0;
+    if (this.inSugar > 0) { const m = Math.min(this.inSugar, need); this.inSugar -= m; this.inWater *= (this.inSugar / (this.inSugar + m) || 0); got += m; need -= m; }
+    const st = this.st, ord = this.broodOrder, n = this.nActive;
+    for (let j = 0; j < n && need > 0.01; j++) {
+      const i = ord[j], s = st[i];
+      if (s !== ST.HONEY && s !== ST.NECTAR) continue;
+      const sg = this.sugar[i], m = Math.min(sg, need);
+      const f = 1 - m / sg;
+      this.sugar[i] = sg - m; this.water[i] *= f; got += m; need -= m;
+      if (this.sugar[i] < 2) { st[i] = ST.EMPTY; this.sugar[i] = 0; this.water[i] = 0; }
+      else if (s === ST.HONEY) st[i] = ST.NECTAR;   // uncapped once bees open it
+    }
+    return got;
+  }
+  consumePollen(need) {
+    let got = 0; const st = this.st, ord = this.broodOrder, n = this.nActive;
+    for (let j = 0; j < n && need > 0.01; j++) {
+      const i = ord[j]; if (st[i] !== ST.POLLEN) continue;
+      const m = Math.min(this.pol[i], need); this.pol[i] -= m; got += m; need -= m;
+      if (this.pol[i] < 1) { st[i] = ST.EMPTY; this.pol[i] = 0; }
+    }
+    return got;
+  }
+
+  // ---------------------------------------------------------------- queen biology
+  queenLayRate() {
+    const q = this.queen; if (!q.present || !q.laying) return 0;
+    const d = this.doy, m = d / 30.42 - 0.5, i0 = ((Math.floor(m) % 12) + 12) % 12, f = m - Math.floor(m);
+    let season = MONTH_LAY[i0] * (1 - f) + MONTH_LAY[(i0 + 1) % 12] * f;
+    const yrs = q.ageD / 365;
+    let max = 1800 * (yrs > 2 ? Math.max(0.35, 1 - 0.2 * (yrs - 2)) : 1);
+    let res = 1;
+    if (this.pollenTotal < 80e3 && this.pollenToday < 50e3 && this.doy > 40) res *= 0.4;
+    if (this.cnt.sugar < 2e6) res *= 0.4;
+    if (this.nectar24 > 1e6) res *= 1.1;
+    return max * season * res * (this.swarmPrep ? 0.35 : 1);
+  }
+  queenHour(c, nurseCap) {
+    const q = this.queen, R = this.rand, st = this.st, n = this.nActive;
+    // -- egg laying
+    let rate = this.queenLayRate();
+    if (this.layingWorkers && !q.present) rate = 120;
+    if (rate > 0) {
+      const nurseF = clamp(nurseCap * 1.4 / (c.eggs + c.larvae + c.dLarvae + 1), 0.15, 1);
+      rate *= nurseF;
+      this.eggAcc += rate / 24;
+      let want = Math.floor(this.eggAcc); this.eggAcc -= want;
+      const droneOK = (this.doy >= 90 && this.doy <= 200 && this.nWorkers > 8000 && c.sugar > 4e6) || q.droneLayer || (this.layingWorkers && !q.present);
+      let nd = q.droneLayer || (this.layingWorkers && !q.present) ? want : (droneOK ? Math.round(want * 0.05) : 0);
+      let nw = want - nd;
+      const allDrone = nd === want;
+      let laid = 0, last = -1, j;
+      for (j = 0; j < n && (nw > 0 || nd > 0); j++) {
+        const i = this.broodOrder[j];
+        if (st[i] !== ST.EMPTY || !this.drawn[i]) continue;
+        if (this.excluder && this.boxOf(i) === 2) continue;
+        if (this.droneCell[i]) { if (nd > 0) { st[i] = ST.EGG; this.caste[i] = 1; this.age[i] = 0; nd--; laid++; last = i; } continue; }
+        if (allDrone) { if (nd > 0) { st[i] = ST.EGG; this.caste[i] = 1; this.age[i] = 0; nd--; laid++; last = i; } continue; }
+        if (nw > 0) { st[i] = ST.EGG; this.caste[i] = 0; this.age[i] = 0; nw--; laid++; last = i; }
+      }
+      this.wantToday += want; this.laidToday += laid;
+      if (last >= 0) this.queenSide = this.sideOf(last);
+    }
+    // -- queen cells
+    for (let k = this.queenCells.length - 1; k >= 0; k--) {
+      const qc = this.queenCells[k];
+      if (qc.age < 0) { if (q.present && q.laying) qc.age += 1; else { this.removeQC(k); continue; } }
+      else qc.age += 1;
+      if (qc.age >= 384) {
+        this.removeQC(k);
+        if (!q.virgin && !(q.present && q.mated && qc.kind !== 'supersedure')) {
+          if (q.present && qc.kind === 'supersedure') this.say('The old queen has been superseded.', 'info');
+          this.queen = { present: true, mated: false, virgin: true, vAge: 0, flights: 0, ageD: 0, laying: false, layFrom: 0, droneLayer: false };
+          this.say('A virgin queen emerged and is destroying rival queen cells.', 'good');
+          for (let m = this.queenCells.length - 1; m >= 0; m--) this.removeQC(m);
+          break;
+        }
+      }
+    }
+    const Q = this.queen;
+    // -- swarm issue
+    if (this.swarmPrep && Q.present && Q.mated && this.queenCells.some(x => x.age >= 200) && this.hour >= 10 && this.hour <= 15 && this.Tout >= 16 && !this.raining) this.issueSwarm();
+    // -- virgin queen maturation & mating flights (afternoons, ≥ 20 °C)
+    if (Q.virgin) {
+      Q.vAge += 1 / 24;
+      if (Q.vAge > 5 && this.hour >= 13 && this.hour <= 16 && this.Tout >= 20 && !this.raining && R() < 0.3) {
+        if (R() < 0.06) { this.queen = { present: false }; this.say('The virgin queen was lost on her mating flight.', 'bad'); }
+        else {
+          Q.flights++; this.say(`Virgin queen returned from mating flight ${Q.flights} (mated with ~${8 + (R() * 10 | 0)} drones).`, 'info');
+          if (Q.flights >= 2 || R() < 0.3) { Q.virgin = false; Q.mated = true; Q.layFrom = this.t + 60 + R() * 24; }
+        }
+      }
+      if (Q.virgin && Q.vAge > 26) { Q.virgin = false; Q.droneLayer = true; Q.layFrom = this.t; this.say('The queen failed to mate — she is laying only drone eggs.', 'bad'); }
+    }
+    if (Q.present && !Q.laying && Q.layFrom && this.t >= Q.layFrom) { Q.laying = true; this.say(Q.droneLayer ? 'Drone-laying queen has begun laying.' : 'The new queen has started laying eggs!', Q.droneLayer ? 'bad' : 'good'); }
+    if (Q.present) {
+      Q.ageD += 1 / 24;
+      if (R() < (Q.ageD > 4 * 365 ? 0.002 : 0.000004)) { this.queen = { present: false }; this.say('The queen has died.', 'bad'); }
+    }
+    // -- queenless: emergency queen rearing from young worker larvae
+    if (!this.queen.present && this.queenCells.length === 0) {
+      let made = 0;
+      for (let j = 0; j < n && made < 4; j++) {
+        const i = this.broodOrder[j];
+        if (st[i] === ST.LARVA && this.caste[i] === 0 && this.age[i] < 120) { st[i] = ST.QCELL; this.queenCells.push({ idx: i, age: this.age[i], kind: 'emergency' }); made++; }
+      }
+      if (made) this.say(`Queenless: workers are raising ${made} emergency queen cells from young larvae.`, 'warn');
+      else {
+        this.queenlessH++;
+        if (!this.layingWorkers && this.queenlessH > 24 * 21 && c.eggs + c.larvae + c.capped === 0) { this.layingWorkers = true; this.say('Hopelessly queenless — laying workers have developed (drone eggs only).', 'bad'); }
+      }
+    } else if (this.queen.present) { this.queenlessH = 0; if (this.queen.mated) this.layingWorkers = false; }
+  }
+  removeQC(k) { const qc = this.queenCells[k]; if (this.st[qc.idx] === ST.QCELL) this.st[qc.idx] = ST.DIRTY; this.queenCells.splice(k, 1); }
+  startSwarmCells() {
+    const R = this.rand, k = 6 + (R() * 9 | 0);
+    for (let m = 0; m < k; m++) {
+      const f = 1 + (R() * 8 | 0), s = R() < .5 ? 0 : 1, side = (1 * 10 + f) * 2 + s;
+      const r = ROWS - 1 - (R() * 2 | 0), cc = 14 + (R() * 52 | 0);
+      const i = side * CPS + r * COLS + cc;
+      if (this.st[i] === ST.QCELL) continue;
+      this.st[i] = ST.QCELL; this.queenCells.push({ idx: i, age: -Math.floor(R() * 72) - 1, kind: 'swarm' });
+    }
+    this.swarmPrep = true;
+    this.say(`Swarm preparations: workers built ${this.queenCells.length} queen cells along the frame bottoms; the queen is slimming down.`, 'warn');
+  }
+  issueSwarm() {
+    const R = this.rand; let left = 0, dr = 0;
+    for (let i = 0; i < this.nb; i++) {
+      if (!this.alive[i]) continue;
+      if (this.btype[i] === 0) { if (this.fstate[i] === 1) continue; if (R() < (this.bage[i] < this.onset ? 0.62 : 0.45)) { this.killBee(i); this.deathsToday--; left++; } }
+      else if (R() < 0.3) { this.killBee(i); this.deathsToday--; dr++; }
+    }
+    this.consumeSugar(left * 30);
+    this.queen = { present: false }; this.swarmPrep = false;
+    this.swarmEvent = { t: this.t, n: left };
+    this.say(`🐝 PRIME SWARM! The old queen left with ~${left.toLocaleString()} workers and ${dr} drones, each carrying ~35 mg of honey.`, 'swarm');
+  }
+
+  // ---------------------------------------------------------------- daily
+  resetDay() {
+    this.nectarToday = 0; this.pollenToday = 0; this.waterToday = 0; this.tripsToday = 0; this.laidToday = 0; this.wantToday = 0;
+    this.deathsToday = 0; this.lostForagers = 0; this.broodDeathsToday = 0; this.emergedToday = 0; this.sugarUsedToday = 0; this.pollenUsedToday = 0;
+    this.chilledToday = 0; this.cellsDrawnToday = 0;
+  }
+  daily(d) {
+    const c = this.cnt || {};
+    this.nectar24 = this.nectarToday;
+    const rec = {
+      day: this.day, doy: this.day % 365, workers: this.nWorkers, drones: this.nDrones,
+      brood: this.broodTotal || 0, honey: (c.honeySugar || 0) / 0.82 / 1e6, nectar: ((c.nectarSugar || 0) + (c.nectarWater || 0)) / 1e6,
+      sugarKg: (c.sugar || 0) / 1e6, pollen: (c.pollen || 0) / 1e6, nectarIn: this.nectarToday / 1e6, pollenIn: this.pollenToday / 1e3,
+      laid: this.laidToday, deaths: this.deathsToday, trips: this.tripsToday, temp: this.wx ? this.wx.mean : 0,
+      chilled: this.chilledToday, emerged: this.emergedToday,
+    };
+    this.history.push(rec); if (this.history.length > 800) this.history.shift();
+    this.lastDay = rec;
+    // daily congestion memory for swarm impulse
+    this.congest = (this.congest || []).concat(this.wantToday > 50 ? this.laidToday / this.wantToday : 1).slice(-3);
+    this.resetDay();
+    this.day = d;
+    const doy = d % 365;
+    if (doy === 0) this.say(`Happy new year — year ${this.year} begins.`, 'info');
+    this.genWeather(doy);
+    this.frostKill = false;
+    // drone eviction at the end of the season / dearth
+    const wasEvict = this.evictDrones;
+    this.evictDrones = (doy > 228 && (this.nectar24 < 150e3 || doy > 258)) || doy > 290 || doy < 60 || (this.cnt && this.cnt.sugar < 3e6) || (this.queen.present === false && false);
+    if (this.queen.present === false || this.queen.virgin) this.evictDrones = false;
+    if (this.evictDrones && !wasEvict && this.nDrones > 50) this.say('Workers are evicting the drones from the hive.', 'info');
+    if (doy === 172) this.say('Summer solstice — the colony is near peak population.', 'info');
+    // swarm impulse check
+    const Q = this.queen;
+    const congested = this.congest.length >= 3 && Math.max(...this.congest) < 0.85;
+    // crowding dilutes queen pheromone (queen mandibular pheromone reaches fewer workers)
+    const drawnCells = this.nActive - (this.cnt ? this.cnt.undrawn : 0);
+    this.crowding = this.nWorkers / (drawnCells * 0.22);
+    const youngSurplus = this.roles ? this.roles.nurses / Math.max(1, this.cnt.larvae) : 0;
+    const pressure = Math.max(congested ? 1 : 0, this.storageFull ? 1 : 0, clamp((this.crowding - 0.8) / 0.4, 0, 1) * clamp(youngSurplus, 0, 1.2));
+    this.swarmPressure = pressure;
+    if (!this.swarmPrep && Q.present && Q.mated && Q.laying && this.queenCells.length === 0 && doy >= 100 && doy <= 185 && this.nWorkers > 17000 && pressure > 0.2) {
+      if (this.allowSwarm) { if (this.rand() < 0.3 * pressure) this.startSwarmCells(); }
+      else if (!this.suppMsg || this.t - this.suppMsg > 24 * 10) { this.say('Swarm impulse detected — beekeeper removed the queen cups (swarming disabled).', 'info'); this.suppMsg = this.t; }
+    }
+    // supersedure of an aging/failing queen
+    if (Q.present && Q.mated && Q.ageD > 2.6 * 365 && doy > 100 && doy < 240 && this.queenCells.length === 0 && this.rand() < 0.02) {
+      let made = 0;
+      for (let j = 0; j < this.nActive && made < 2; j++) { const i = this.broodOrder[j]; if (this.st[i] === ST.LARVA && this.caste[i] === 0 && this.age[i] < 110) { this.st[i] = ST.QCELL; this.queenCells.push({ idx: i, age: this.age[i], kind: 'supersedure' }); made++; } }
+      if (made) this.say('Workers are raising supersedure cells to replace the aging queen.', 'warn');
+    }
+    if (doy > 270 && this.wx.mean < 8 && this.clusterYear !== this.year) { this.say('Cold weather — bees are forming a winter cluster.', 'info'); this.clusterYear = this.year; }
+    if (this.nWorkers < 300 && !this.deadMsg) { this.deadMsg = true; this.say('The colony has collapsed.', 'bad'); }
+  }
+
+  // ---------------------------------------------------------------- beekeeper actions
+  addSuper() {
+    if (this.nBoxes >= 3) return 'Already has a super.';
+    this.nBoxes = 3; this.excluder = true; this.buildOrders();
+    this.say('Beekeeper added a honey super (foundation, above a queen excluder).', 'keeper'); return 'ok';
+  }
+  harvest() {
+    let got = 0; const n = this.nActive;
+    const total = () => { let s = 0; for (let i = 0; i < n; i++) if (this.st[i] === ST.HONEY || this.st[i] === ST.NECTAR) s += this.sugar[i]; return s / 0.82; };
+    let keep = 20e6, have = total();
+    for (const box of [2, 1]) {
+      for (let i = box * 20 * CPS; i < (box + 1) * 20 * CPS && i < n; i++) {
+        if (this.st[i] !== ST.HONEY) continue;
+        const m = this.sugar[i] / 0.82;
+        if (box === 1 && have - m < keep) continue;
+        got += m; have -= m; this.st[i] = ST.EMPTY; this.sugar[i] = 0; this.water[i] = 0;
+      }
+    }
+    this.say(got > 0 ? `Beekeeper harvested ${(got / 1e6).toFixed(1)} kg of capped honey (leaving ≥ 20 kg for the bees).` : 'Nothing to harvest — not enough capped surplus honey.', 'keeper');
+    this.totalHarvest = (this.totalHarvest || 0) + got;
+    return got;
+  }
+  feed() { this.feeder += 5e6; this.say('Beekeeper gave 5 kg of 2:1 sugar syrup.', 'keeper'); }
+  introduceQueen() {
+    if (this.queen.present) return;
+    for (let m = this.queenCells.length - 1; m >= 0; m--) this.removeQC(m);
+    this.queen = { present: true, mated: true, virgin: false, ageD: 180, laying: false, layFrom: this.t + 72, droneLayer: false };
+    this.layingWorkers = false; this.say('Beekeeper introduced a mated queen in a cage; she should be released and laying in ~3 days.', 'keeper');
+  }
+}
+if (typeof module !== 'undefined') module.exports = { Hive, ST, COLS, ROWS, CPS, FPB, SIDES, NC, DEV, FLORA };
+
+</script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const S3 = Math.sqrt(3);
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MDAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+function doyToDate(doy){ let m=0; while(m<11 && doy>=MDAYS[m]){doy-=MDAYS[m];m++;} return MONTHS[m]+' '+(doy+1); }
+const fmt = n => Math.round(n).toLocaleString();
+const ROLE_COL = { cleaner:'#7fd4ff', nurse:'#ff8fc8', storer:'#ffd54a', guard:'#ff6a4d', forager:'#8ee06a', drone:'#b0b0b0', queen:'#e89cff' };
+
+let hive, simAcc = 0, speedIdx = 3, paused = false, colorRoles = false;
+const SPEEDS = [['⏸',0],['Real time',1],['1 min/s',60],['10 min/s',600],['1 hr/s',3600],['6 hr/s',21600],['1 day/s',86400],['Max',1e9]];
+speedIdx = 4;
+let sel = { box: 0, frame: 4, side: 0 };
+let combDirty = true, lastHourSeen = -1, lastDaySeen = -1;
+
+// ======================================================= speed controls
+function buildSpeed(){
+  const el = $('speed'); el.innerHTML='';
+  SPEEDS.forEach(([lab],k)=>{ const b=document.createElement('button'); b.textContent=lab; b.className = k===speedIdx?'on':''; b.onclick=()=>{speedIdx=k; buildSpeed();}; el.appendChild(b); });
+}
+buildSpeed();
+
+// ======================================================= frame selector (hive map)
+const hm = $('hiveMap'), hmx = hm.getContext('2d');
+let hmBoxes = [];
+function drawHiveMap(){
+  const dpr = devicePixelRatio||1, W = hm.clientWidth, H = hm.clientHeight;
+  if (hm.width !== W*dpr || hm.height !== H*dpr){ hm.width=W*dpr; hm.height=H*dpr; }
+  hmx.setTransform(dpr,0,0,dpr,0,0); hmx.clearRect(0,0,W,H);
+  const nb = hive.nBoxes, gap = 14, bw = Math.min(330, (W - gap*(nb-1)) / nb), top = 16, bh = H - top - 4;
+  hmBoxes = [];
+  const names = ['Box 1 · bottom deep','Box 2 · upper deep','Box 3 · honey super'];
+  for (let b=0;b<nb;b++){
+    const x0 = b*(bw+gap);
+    hmx.fillStyle='#b7a37e'; hmx.font='11px system-ui'; hmx.fillText(names[b] + (b===2&&hive.excluder?' (above excluder)':''), x0+2, 11);
+    hmx.fillStyle='#3a2a16'; hmx.fillRect(x0, top, bw, bh);
+    const fw = (bw-6)/10;
+    for (let f=0;f<10;f++){
+      for (let s=0;s<2;s++){
+        const side = (b*10+f)*2+s, o = side*8, ss = hive.sideStats;
+        const tot = ss[o]+ss[o+1]+ss[o+2]+ss[o+3]+ss[o+4]+ss[o+5]+ss[o+6] || 1;
+        const x = x0+3+f*fw + s*(fw/2) + 0.5, w = fw/2 - 1.5, y0 = top+3, hh = bh-6;
+        const parts = [[ss[o+1]+ss[o+2],'#f0c24a'],[ss[o+3],'#e0862a'],[ss[o],'#a0622a'],[ss[o+4]+ss[o+6],'#4a3520'],[ss[o+5],'#d9c99a']];
+        let y = y0;
+        for (const [v,c] of parts){ const h = hh*v/tot; hmx.fillStyle=c; hmx.fillRect(x,y,w,h); y+=h; }
+        const isSel = sel.box===b && sel.frame===f && sel.side===s;
+        if (isSel){ hmx.strokeStyle='#fff'; hmx.lineWidth=2; hmx.strokeRect(x-1,y0-1,w+2,hh+2); }
+        if (hive.queen.present && hive.queenSide===side){ hmx.fillStyle='#e89cff'; hmx.beginPath(); hmx.arc(x+w/2, y0+hh/2, Math.min(4,w/2), 0, 7); hmx.fill(); }
+        hmBoxes.push({x, y:y0, w, h:hh, b, f, s});
+      }
+    }
+  }
+}
+hm.addEventListener('click', e=>{
+  const r = hm.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  for (const q of hmBoxes) if (mx>=q.x-1 && mx<=q.x+q.w+1 && my>=q.y && my<=q.y+q.h){ selectSide(q.b,q.f,q.s); return; }
+});
+function selectSide(b,f,s){ sel={box:b,frame:f,side:s}; combDirty=true; bees.reset(); drawHiveMap(); }
+addEventListener('keydown', e=>{
+  if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  if (e.key==='ArrowRight'){ let k=sel.frame*2+sel.side+1; if(k<20) selectSide(sel.box,k>>1,k&1); }
+  else if (e.key==='ArrowLeft'){ let k=sel.frame*2+sel.side-1; if(k>=0) selectSide(sel.box,k>>1,k&1); }
+  else if (e.key==='ArrowUp'){ if(sel.box<hive.nBoxes-1) selectSide(sel.box+1,sel.frame,sel.side); }
+  else if (e.key==='ArrowDown'){ if(sel.box>0) selectSide(sel.box-1,sel.frame,sel.side); }
+  else if (e.key===' '){ e.preventDefault(); speedIdx = speedIdx===0 ? (window._lastSpeed||4) : (window._lastSpeed=speedIdx, 0); buildSpeed(); }
+});
+
+// ======================================================= comb view
+const cv = $('comb'), cx = cv.getContext('2d');
+const cache = document.createElement('canvas'), ccx = cache.getContext('2d');
+const view = { z: 1, px: 0, py: 0 };
+const COMB_W = S3*(COLS+0.5), COMB_H = 1.5*ROWS+0.5;
+let geo = { R: 5, ox: 0, oy: 0, W: 0, H: 0, dpr: 1 };
+let sideLists = null;
+function layout(){
+  const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); cache.width=cv.width; cache.height=cv.height; combDirty=true; }
+  const m = 26;
+  const R0 = Math.min((W-2*m)/COMB_W, (H-2*m-14)/COMB_H);
+  const R = R0*view.z;
+  const ox = (W - COMB_W*R)/2 + view.px, oy = (H - COMB_H*R)/2 + 7 + view.py;
+  if (R!==geo.R||ox!==geo.ox||oy!==geo.oy) combDirty=true;
+  geo = { R, R0, ox, oy, W, H, dpr };
+}
+const cellX = (r,c) => S3*(c+0.5+0.5*(r&1));
+const cellY = r => 1+1.5*r;
+const HEX = []; for (let k=0;k<6;k++){ const a = Math.PI/180*(60*k-90); HEX.push([Math.cos(a),Math.sin(a)]); }
+function hexPath(ctx,x,y,r){ ctx.moveTo(x+HEX[0][0]*r,y+HEX[0][1]*r); for(let k=1;k<6;k++) ctx.lineTo(x+HEX[k][0]*r,y+HEX[k][1]*r); ctx.closePath(); }
+const POLC = FLORA.map(f=>f.col);
+function shade(hex, f){ const n=parseInt(hex.slice(1),16); let r=n>>16,g=n>>8&255,b=n&255; r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f); return `rgb(${Math.min(255,r)},${Math.min(255,g)},${Math.min(255,b)})`; }
+
+function renderComb(){
+  const { R, ox, oy, W, H, dpr } = geo;
+  const c = ccx; c.setTransform(dpr,0,0,dpr,0,0);
+  c.fillStyle='#0f0b06'; c.fillRect(0,0,W,H);
+  const side = (sel.box*10+sel.frame)*2+sel.side, base = side*CPS;
+  const newComb = sel.box===2;
+  // wooden frame
+  const fx = ox - R*1.4, fy = oy - R*3.2, fw = COMB_W*R + R*2.8, fh = COMB_H*R + R*4.6;
+  c.fillStyle='#8a6a3e'; c.fillRect(fx - R*3, fy, fw + R*6, R*2.4);   // top bar with lugs
+  c.fillStyle='#a07c49'; c.fillRect(fx, fy+R*2.4, R*1.4, fh-R*2.4); c.fillRect(fx+fw-R*1.4, fy+R*2.4, R*1.4, fh-R*2.4);
+  c.fillRect(fx, fy+fh-R*1.2, fw, R*1.2);
+  // wax wall base
+  c.fillStyle = newComb ? '#e6d29a' : (sel.box===0 ? '#6e4a20' : '#86602c');
+  c.fillRect(ox, oy, COMB_W*R, COMB_H*R);
+  const lists = { egg:[], larva:[], capped:[], nectar:[], honey:[], pollen:[], empty:[], dirty:[], undrawn:[], brood:[] };
+  const st=hive.st, rr = R*0.9, detail = R >= 4.2;
+  const emptyCol = newComb ? '#cdb77c' : (sel.box===0 ? '#2f1f0d' : '#3d2a12');
+  const minX = -2, maxX = W+2;
+  for (let r=0;r<ROWS;r++){
+    const y = oy + cellY(r)*R; if (y < -R*2 || y > H+R*2) { // still collect lists
+      for (let col=0;col<COLS;col++) collect(lists, base+r*COLS+col, r*COLS+col); continue; }
+    for (let col=0;col<COLS;col++){
+      const i = base + r*COLS + col, k = r*COLS+col;
+      collect(lists, i, k);
+      const x = ox + cellX(r,col)*R; if (x<minX-R||x>maxX+R) continue;
+      const s = st[i];
+      if (!hive.drawn[i]) { c.fillStyle='#e9dcaa'; c.beginPath(); hexPath(c,x,y,R*0.97); c.fill(); if(detail){c.strokeStyle='rgba(150,120,60,.35)';c.lineWidth=.6;c.stroke();} continue; }
+      const rad = hive.droneCell[i] ? rr*1.0 : rr;
+      let fill = emptyCol;
+      switch(s){
+        case 2: case 3: fill = newComb ? '#c9b27a' : '#3a2812'; break;
+        case 4: fill = hive.caste[i]===1 ? '#b07c3a' : '#c4935a'; if (sel.box===0) fill = hive.caste[i]===1 ? '#9a6a30':'#b4844c'; break;
+        case 5: { const sg=hive.sugar[i], w=hive.water[i], vol=sg/1.59+w, cap=hive.droneCell[i]?500:280, f=Math.min(1,vol/cap);
+                  fill = f>0.6 ? '#e4a524' : f>0.3 ? '#c8861c' : '#9c6418'; if (newComb) fill = f>0.6?'#f0bd3c':f>0.3?'#e0a43a':'#d49a40'; break; }
+        case 6: fill = '#f1e2a6'; break;
+        case 7: fill = POLC[(hive.pcol[i]||1)-1] || '#e0a030'; break;
+        case 1: fill = newComb ? '#bba468' : '#24170a'; break;
+      }
+      c.fillStyle = fill; c.beginPath(); hexPath(c,x,y,rad); c.fill();
+      if (!detail) continue;
+      if (s===2){ c.fillStyle='#fbf8ee'; c.beginPath(); c.ellipse(x,y,R*0.13,R*0.3,0.3,0,7); c.fill(); }
+      else if (s===3){ const a=Math.min(1,(hive.age[i]-72)/((hive.caste[i]===1?240:216)-72)); const rad2=R*(0.16+0.46*a);
+        c.fillStyle='rgba(255,252,235,.32)'; c.beginPath(); c.arc(x,y,R*(0.35+0.3*a),0,7); c.fill();   // brood food (jelly)
+        c.strokeStyle='#f6f1e2'; c.lineWidth=Math.max(1,R*(0.12+0.3*a)); c.lineCap='round'; c.beginPath(); c.arc(x,y,rad2*0.72,0.7,5.6); c.stroke();
+        if (R>14){ c.strokeStyle='rgba(190,175,140,.6)'; c.lineWidth=0.8; for(let q=1;q<6;q++){ const t=0.7+q*0.82, r1=rad2*0.72-R*(0.06+0.15*a), r2=rad2*0.72+R*(0.06+0.15*a); c.beginPath(); c.moveTo(x+Math.cos(t)*r1,y+Math.sin(t)*r1); c.lineTo(x+Math.cos(t)*r2,y+Math.sin(t)*r2); c.stroke(); } } }
+      else if (s===4){ c.fillStyle= hive.caste[i]===1 ? 'rgba(255,230,180,.28)' : 'rgba(255,235,200,.18)'; c.beginPath(); c.arc(x-R*0.15,y-R*0.15,R*(hive.caste[i]===1?0.5:0.38),0,7); c.fill(); }
+      else if (s===5){ c.fillStyle='rgba(255,250,220,.55)'; c.beginPath(); c.ellipse(x-R*0.3,y-R*0.32,R*0.2,R*0.1,-0.6,0,7); c.fill(); }
+      else if (s===6){ c.fillStyle='rgba(255,255,255,.35)'; c.beginPath(); c.arc(x-R*0.2,y-R*0.2,R*0.32,0,7); c.fill(); }
+      else if (s===7){ c.fillStyle='rgba(0,0,0,.18)'; c.beginPath(); c.arc(x+R*0.2,y+R*0.1,R*0.16,0,7); c.arc(x-R*0.25,y+R*0.25,R*0.12,0,7); c.fill(); }
+      else if (s===1){ c.fillStyle='rgba(200,170,120,.35)'; c.beginPath(); c.arc(x+R*0.15,y+R*0.1,R*0.14,0,7); c.fill(); }
+    }
+  }
+  // queen cells
+  for (const qc of hive.queenCells){
+    if (((qc.idx/CPS)|0)!==side) continue;
+    const k = qc.idx%CPS, r=(k/COLS)|0, col=k%COLS, x=ox+cellX(r,col)*R, y=oy+cellY(r)*R;
+    const L = qc.age<0 ? R*0.9 : R*(1.2 + 1.4*Math.min(1, qc.age/192));
+    c.fillStyle = qc.age>=192 ? '#a8803f' : '#d1ad62'; c.strokeStyle='#5a3f18'; c.lineWidth=Math.max(.8,R*0.12);
+    c.beginPath(); c.ellipse(x, y+L*0.45, R*0.75, L*0.6, 0, 0, 7); c.fill(); c.stroke();
+    if (R>3){ c.fillStyle='rgba(90,60,20,.4)'; for(let t=0;t<5;t++){ c.beginPath(); c.arc(x+(t%2?-1:1)*R*0.3, y+L*(0.15+t*0.15), R*0.09,0,7); c.fill(); } }
+  }
+  sideLists = lists;
+  combDirty = false;
+}
+function collect(lists, i, k){
+  const s = hive.st[i];
+  if (!hive.drawn[i]) { lists.undrawn.push(k); return; }
+  switch(s){ case 0: lists.empty.push(k); break; case 1: lists.dirty.push(k); break; case 2: lists.egg.push(k); lists.brood.push(k); break;
+    case 3: lists.larva.push(k); lists.brood.push(k); break; case 4: lists.capped.push(k); lists.brood.push(k); break;
+    case 5: lists.nectar.push(k); break; case 6: lists.honey.push(k); break; case 7: lists.pollen.push(k); break; }
+}
+
+// ---------- bee drawing
+const GRAD = {};
+function stripes(ctx, kind){
+  const key = kind; if (GRAD[key]) return GRAD[key];
+  const g = ctx.createLinearGradient(-2.6,0,0.2,0);
+  if (kind==='d'){ [[0,'#2b1c0c'],[.16,'#2b1c0c'],[.2,'#8a5a22'],[.34,'#8a5a22'],[.38,'#2b1c0c'],[.5,'#2b1c0c'],[.54,'#946226'],[.7,'#946226'],[.74,'#3a260f'],[1,'#3a260f']].forEach(([o,c])=>g.addColorStop(o,c)); }
+  else if (kind==='q'){ [[0,'#3a2410'],[.12,'#3a2410'],[.18,'#c0782a'],[.38,'#c0782a'],[.42,'#4a2e12'],[.5,'#4a2e12'],[.55,'#c98a36'],[.78,'#c98a36'],[.82,'#5a3a18'],[1,'#5a3a18']].forEach(([o,c])=>g.addColorStop(o,c)); }
+  else { [[0,'#2a1a0a'],[.14,'#2a1a0a'],[.2,'#d9a03a'],[.34,'#d9a03a'],[.4,'#2f1d0b'],[.5,'#2f1d0b'],[.56,'#e0aa45'],[.72,'#e0aa45'],[.78,'#3a250f'],[.86,'#3a250f'],[.9,'#d2983a'],[1,'#d2983a']].forEach(([o,c])=>g.addColorStop(o,c)); }
+  GRAD[key]=g; return g;
+}
+function drawBee(ctx, x, y, ang, s, kind, opt){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.scale(s,s);
+  if (opt.foreshort) ctx.scale(0.86,1);
+  const Q = kind==='q', Dr = kind==='d';
+  const detail = s > 3.2;
+  // legs & antennae (only when zoomed in enough to see them)
+  if (detail){
+    ctx.strokeStyle='#24170b'; ctx.lineWidth=0.11; ctx.lineCap='round'; ctx.beginPath();
+    for (const sg of [1,-1]){
+      ctx.moveTo(0.55,0.2*sg); ctx.lineTo(0.95,0.75*sg); ctx.lineTo(1.25,0.95*sg);
+      ctx.moveTo(0.3,0.25*sg); ctx.lineTo(0.25,0.9*sg); ctx.lineTo(0.05,1.15*sg);
+      ctx.moveTo(0.05,0.25*sg); ctx.lineTo(-0.45,0.85*sg); ctx.lineTo(-0.95,1.05*sg);
+      ctx.moveTo(1.45,0.12*sg); ctx.quadraticCurveTo(1.85,0.25*sg,2.0,0.55*sg);
+    }
+    ctx.stroke();
+  }
+  // abdomen
+  const ax = Q ? -1.55 : -1.1, arx = Q ? 1.65 : Dr ? 1.35 : 1.18, ary = Dr ? 0.88 : Q ? 0.62 : 0.66;
+  ctx.fillStyle = stripes(ctx, kind);
+  ctx.beginPath(); ctx.ellipse(ax, 0, arx, ary, 0, 0, 7); ctx.fill();
+  if (detail){ ctx.fillStyle='rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax+0.1,-ary*0.35,arx*0.75,ary*0.3,0,0,7); ctx.fill(); }
+  if (opt.pollen){ ctx.fillStyle=opt.pollen; ctx.beginPath(); ctx.arc(-0.35,0.78,0.34,0,7); ctx.arc(-0.35,-0.78,0.34,0,7); ctx.fill(); }
+  // thorax
+  ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c';
+  ctx.beginPath(); ctx.ellipse(0.3,0,0.62,0.56,0,0,7); ctx.fill();
+  ctx.fillStyle='rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3,0,0.5,0.44,0,0,7); ctx.fill();
+  // head + compound eyes
+  ctx.fillStyle='#2e1f10'; ctx.beginPath(); ctx.ellipse(1.12,0,0.34,0.42,0,0,7); ctx.fill();
+  ctx.fillStyle='#120d08';
+  if (Dr){ ctx.beginPath(); ctx.ellipse(1.06,0.24,0.36,0.27,0.3,0,7); ctx.ellipse(1.06,-0.24,0.36,0.27,-0.3,0,7); ctx.fill(); }
+  else { ctx.beginPath(); ctx.ellipse(1.08,0.3,0.22,0.13,0.2,0,7); ctx.ellipse(1.08,-0.3,0.22,0.13,-0.2,0,7); ctx.fill(); }
+  // wings, folded flat over the abdomen; blurred & raised while waggling
+  const wl = Q ? 1.05 : Dr ? 1.55 : 1.2, buzz = opt.buzz;
+  ctx.fillStyle = buzz ? 'rgba(230,238,255,.16)' : 'rgba(225,234,250,.30)';
+  ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.06;
+  for (const sg of [1,-1]){
+    const rot = sg*(buzz ? 0.55 : 0.12);
+    ctx.beginPath(); ctx.ellipse(-0.55, sg*(buzz?0.55:0.2), wl, buzz?0.42:0.28, rot, 0, 7); ctx.fill(); if (detail) ctx.stroke();
+  }
+  if (opt.role){ ctx.fillStyle=opt.role; ctx.beginPath(); ctx.arc(0.3,0,0.3,0,7); ctx.fill(); }
+  ctx.restore();
+}
+// ---------- bee sprites on the visible comb
+const MAXS = 650;
+const bees = {
+  list: [], dancers: [], queen: null, scale: 1,
+  reset(){ this.list=[]; this.dancers=[]; this.queen=null; },
+  randCell(arr){ if(!arr||!arr.length) return -1; return arr[(Math.random()*arr.length)|0]; },
+  cellPos(k){ const r=(k/COLS)|0, c=k%COLS; return [cellX(r,c), cellY(r)]; },
+};
+function sideWeight(side){
+  const o = side*8, ss = hive.sideStats, b=(side/20)|0, f=((side%20)/2)|0;
+  const drawn = (ss[o]+ss[o+1]+ss[o+2]+ss[o+3]+ss[o+4]+ss[o+6]) > 0;
+  if (!drawn || b>=hive.nBoxes) return 0.0001;
+  const cf = Math.exp(-Math.pow((f-4.5)/2.6,2)) * (b===2?0.35:1);
+  return ss[o]*1.2 + (ss[o+1]+ss[o+2]+ss[o+3])*0.12 + 600*cf + 20;
+}
+function beesOnSide(){
+  const side = (sel.box*10+sel.frame)*2+sel.side;
+  let tot=0; for(let s=0;s<hive.nBoxes*20;s++) tot+=sideWeight(s);
+  const frac = sideWeight(side)/tot;
+  const homeW = Math.max(0, hive.nWorkers - hive.outCount());
+  const homeD = Math.max(0, hive.nDrones - hive.flyDrones);
+  return { w: Math.round(homeW*frac), d: Math.round(homeD*frac), side };
+}
+function pickRole(){
+  const r = hive.roles; const tot = r.cleaners+r.nurses+r.storers+r.guards+r.foragers*0.6 || 1;
+  let x = Math.random()*tot;
+  if ((x-=r.cleaners)<0) return 'cleaner'; if ((x-=r.nurses)<0) return 'nurse'; if ((x-=r.storers)<0) return 'storer'; if ((x-=r.guards)<0) return 'guard'; return 'forager';
+}
+function newSprite(kind){
+  const [x,y] = bees.cellPos((Math.random()*CPS)|0);
+  return { kind, role: kind==='d'?'drone':pickRole(), x, y, a: Math.random()*6.28, mode:'idle', t: Math.random()*3, tx:x, ty:y, wob: Math.random()*10, pollen:null };
+}
+function clusterCenter(){
+  const L = sideLists && sideLists.brood.length ? sideLists.brood : null;
+  if (L){ let sx=0,sy=0; for(let k=0;k<L.length;k+=7){ const p=bees.cellPos(L[k]); sx+=p[0]; sy+=p[1]; } const n=Math.ceil(L.length/7); return [sx/n, sy/n]; }
+  return [COMB_W/2, sel.box===0 ? COMB_H*0.25 : COMB_H*0.7];
+}
+function chooseTask(b){
+  const L = sideLists; if (!L) return;
+  const clustered = hive.Tout < 12;
+  let k = -1, work = 0;
+  if (clustered && b.kind!=='q'){
+    const [cx0,cy0] = clusterCenter(); const rad = Math.sqrt(bees.list.length)*1.35 + 4;
+    const a = Math.random()*6.28, d = Math.sqrt(Math.random())*rad;
+    b.tx = Math.max(1.5, Math.min(COMB_W-1.5, cx0 + Math.cos(a)*d)); b.ty = Math.max(1.5, Math.min(COMB_H-1.5, cy0 + Math.sin(a)*d*0.8)); b.mode='walk'; b.next='rest'; b.t=0; return;
+  }
+  switch(b.role){
+    case 'nurse': k = Math.random()<0.75 ? bees.randCell(L.larva) : bees.randCell(L.egg.length?L.egg:L.pollen); work = 2+Math.random()*5; break;
+    case 'cleaner': k = bees.randCell(L.dirty.length?L.dirty:L.empty); work = 4+Math.random()*6; break;
+    case 'storer': k = Math.random()<0.6 ? bees.randCell(L.nectar.length?L.nectar:L.empty) : bees.randCell(L.undrawn.length&&Math.random()<.5?L.undrawn:L.honey); work = 3+Math.random()*8; break;
+    case 'guard': case 'forager': case 'drone': if (Math.random()<0.55){ b.mode='rest'; b.t = 3+Math.random()*10; return; } break;
+  }
+  if (k<0){ const [x,y] = bees.cellPos((Math.random()*CPS)|0); b.tx=x; b.ty=y; b.next='rest'; b.work=2+Math.random()*4; }
+  else { const [x,y] = bees.cellPos(k); const ang = Math.random()*6.28; b.cell=[x,y]; b.tx = x - Math.cos(ang)*1.7; b.ty = y - Math.sin(ang)*1.7; b.next='work'; b.work=work; }
+  b.mode='walk';
+}
+function updateBees(dt){
+  if (!sideLists) return;
+  const want = beesOnSide();
+  const totalWant = want.w + want.d;
+  bees.scale = totalWant > MAXS ? totalWant/MAXS : 1;
+  const nW = Math.round(want.w / bees.scale), nD = Math.round(want.d / bees.scale);
+  // sync counts gradually
+  let cw=0, cd=0; for (const b of bees.list){ if(b.kind==='w') cw++; else if (b.kind==='d') cd++; }
+  for (let k=0;k<Math.min(8, nW-cw);k++) bees.list.push(newSprite('w'));
+  for (let k=0;k<Math.min(3, nD-cd);k++) bees.list.push(newSprite('d'));
+  if (cw > nW + 2){ const idx = bees.list.findIndex(b=>b.kind==='w' && b.mode!=='dance' && b.mode!=='follow' && b.mode!=='retinue'); if (idx>=0) bees.list.splice(idx,1); }
+  if (cd > nD){ const idx = bees.list.findIndex(b=>b.kind==='d'); if (idx>=0) bees.list.splice(idx,1); }
+  // role refresh slowly
+  if (Math.random()<0.02 && bees.list.length){ const b=bees.list[(Math.random()*bees.list.length)|0]; if(b.kind==='w'&&b.mode!=='dance'&&b.mode!=='follow'&&b.mode!=='retinue') b.role=pickRole(); }
+  // queen
+  const side = want.side;
+  const qHere = hive.queen.present && (hive.queenSide===side || (!hive.queen.laying && side===((1*10+4)*2)));
+  if (qHere && !bees.queen){ const [x,y]=clusterCenter(); bees.queen = { kind:'q', role:'queen', x, y, a:0, mode:'idle', t:1, tx:x, ty:y, wob:0 }; }
+  if (!qHere && bees.queen){ bees.queen=null; for(const b of bees.list) if(b.mode==='retinue'){ b.mode='idle'; b.t=0; } }
+  if (bees.queen){
+    const q = bees.queen;
+    const ret = bees.list.filter(b=>b.mode==='retinue');
+    if (!hive.queen.virgin && ret.length < 8){ const c = bees.list.find(b=>b.kind==='w' && b.mode!=='dance' && b.mode!=='follow' && b.mode!=='retinue'); if (c){ c.mode='retinue'; c.slot = Math.random()*6.28; } }
+    moveBee(q, dt, 2.2);
+    if (q.mode==='idle'){ q.t-=dt; if (q.t<=0){ const k = bees.randCell(sideLists.empty.length? sideLists.empty : sideLists.brood); if (k>=0){ const p=bees.cellPos(k); const near = Math.hypot(p[0]-q.x,p[1]-q.y) < 25 || Math.random()<0.2; if(near){ q.tx=p[0]; q.ty=p[1]; q.mode='walk'; q.next='lay'; } } q.t = 0.5; } }
+    else if (q.mode==='lay'){ q.t-=dt; if (q.t<=0){ q.mode='idle'; q.t = 1+Math.random()*3; } }
+  }
+  // dances (only on the lower part of brood-box frames near the entrance)
+  updateDances(dt, side);
+  for (const b of bees.list) stepBee(b, dt);
+}
+function moveBee(b, dt, speed){
+  if (b.mode!=='walk') return;
+  const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
+  if (d < 0.4){ b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); return; }
+  const want = Math.atan2(dy,dx); let da = want-b.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+  b.a += Math.max(-6*dt, Math.min(6*dt, da)) + (Math.random()-0.5)*0.15;
+  const v = speed*dt*(0.6+0.4*Math.cos(da));
+  b.x += Math.cos(b.a)*Math.min(v,d); b.y += Math.sin(b.a)*Math.min(v,d);
+  b.x = Math.max(0.5, Math.min(COMB_W-0.5, b.x)); b.y = Math.max(0.5, Math.min(COMB_H-0.5, b.y));
+}
+function stepBee(b, dt){
+  b.wob += dt;
+  if (b.mode==='retinue' && bees.queen){
+    const q=bees.queen; const a = b.slot; b.tx=q.x+Math.cos(a)*2.9; b.ty=q.y+Math.sin(a)*2.4;
+    const dx=b.tx-b.x, dy=b.ty-b.y; b.x+=dx*Math.min(1,dt*3); b.y+=dy*Math.min(1,dt*3);
+    b.a = Math.atan2(q.y-b.y,q.x-b.x); if (Math.random()<0.002) { b.mode='idle'; b.t=0; }
+    return;
+  }
+  if (b.mode==='dance' || b.mode==='follow') return;
+  if (b.mode==='walk'){ moveBee(b, dt, b.kind==='d'?3:4.5); return; }
+  b.t -= dt;
+  if (b.mode==='rest' && hive.Tout<12){ b.x += (Math.random()-0.5)*0.04; b.y += (Math.random()-0.5)*0.04; }
+  if (b.t <= 0) chooseTask(b);
+}
+// waggle dances
+function updateDances(dt, side){
+  const onFloor = sel.box===0;
+  const NP = hive.patches.length;
+  let tot=0; for(let p=0;p<NP;p++) tot += hive.danceN[p]+hive.danceP[p];
+  // roughly 1 dancer per ~25 circuits/10 min, spread over the 20 brood-box faces near the entrance
+  const want = onFloor ? Math.min(3, Math.round(tot/60/20 + (tot>40 ? 0.6 : 0))) : 0;
+  bees.dancers = bees.dancers.filter(d=>d.left>0);
+  if (bees.dancers.length < want && Math.random()<dt*0.8 && tot>0){
+    let x = Math.random()*tot, p=0, pol=false;
+    for (; p<NP; p++){ x-=hive.danceN[p]; if (x<=0) break; x-=hive.danceP[p]; if (x<=0){pol=true;break;} }
+    p = Math.min(p, NP-1);
+    const b = bees.list.find(z=>z.kind==='w' && (z.mode==='rest'||z.mode==='idle'));
+    if (b){
+      const P = hive.patches[p];
+      b.mode='dance'; b.role='forager'; b.pollen = pol ? P.col : null;
+      const d = { bee:b, patch:p, pol, cx: 12+Math.random()*(COMB_W-24), cy: COMB_H*0.55+Math.random()*COMB_H*0.35, phase:'run', t:0, circ: 0,
+        left: 6 + Math.random()*12, dir:1, followers:[] };
+      bees.dancers.push(d);
+      for (let k=0;k<3+(Math.random()*3|0);k++){ const f = bees.list.find(z=>z.kind==='w' && (z.mode==='rest'||z.mode==='idle'||z.mode==='walk') && z!==b); if (f){ f.mode='follow'; d.followers.push(f); } }
+    }
+  }
+  for (const d of bees.dancers){
+    const P = hive.patches[d.patch], b = d.bee;
+    const theta = ((P.az - hive.sunAz) * Math.PI/180);         // angle from vertical (up = toward sun)
+    const ux = Math.sin(theta), uy = -Math.cos(theta);
+    const round = P.dist < 0.15;
+    const runDur = round ? 0.25 : 0.45 + P.dist*0.9;               // waggle-run duration ≈ distance
+    const runLen = round ? 0.6 : 2 + P.dist*2.4;
+    d.t += dt;
+    if (d.phase==='run'){
+      const f = Math.min(1, d.t/runDur);
+      const wag = Math.sin(d.t*2*Math.PI*7)*0.32;
+      b.x = d.cx + ux*(f-0.5)*runLen - uy*wag; b.y = d.cy + uy*(f-0.5)*runLen + ux*wag;
+      b.a = Math.atan2(uy,ux) + wag*0.9; b.buzz = true;
+      if (f>=1){ d.phase='ret'; d.t=0; d.dir*=-1; }
+    } else {
+      const retDur = round ? 0.9 : 1.1 + P.dist*0.15, f = Math.min(1, d.t/retDur);
+      const px = -uy*d.dir, py = ux*d.dir, rad = Math.max(1.4, runLen/2 + 0.6);
+      const co = Math.cos(Math.PI*f), si = Math.sin(Math.PI*f);
+      b.x = d.cx + ux*(runLen/2)*co + px*si*rad;
+      b.y = d.cy + uy*(runLen/2)*co + py*si*rad;
+      const vx = -ux*(runLen/2)*si + px*co*rad, vy = -uy*(runLen/2)*si + py*co*rad;
+      b.a = Math.atan2(vy, vx); b.buzz=false;
+      if (f>=1){ d.phase='run'; d.t=0; d.circ++; }
+    }
+    d.followers.forEach((fb,k)=>{
+      const sa = (k/d.followers.length)*Math.PI*1.4 + Math.PI*0.8;
+      const tx = d.cx - ux*(runLen*0.2) + Math.cos(sa + Math.atan2(uy,ux))*2.6, ty = d.cy - uy*(runLen*0.2) + Math.sin(sa + Math.atan2(uy,ux))*2.6;
+      fb.x += (tx-fb.x)*Math.min(1,dt*2); fb.y += (ty-fb.y)*Math.min(1,dt*2);
+      fb.a = Math.atan2(b.y-fb.y, b.x-fb.x);
+    });
+    d.left -= dt;
+    if (d.left<=0){ b.mode='idle'; b.t=0; b.buzz=false; d.followers.forEach(fb=>{fb.mode='idle';fb.t=0;}); }
+  }
+}
+function drawComb(){
+  layout();
+  if (combDirty) renderComb();
+  const { R, ox, oy, W, H, dpr } = geo;
+  cx.setTransform(1,0,0,1,0,0); cx.drawImage(cache,0,0);
+  cx.setTransform(dpr,0,0,dpr,0,0);
+  const sc = R;
+  const role = colorRoles;
+  for (const b of bees.list){
+    const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
+    drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, role: role ? ROLE_COL[b.role] : null });
+  }
+  if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
+    if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
+  // dance annotation
+  for (const d of bees.dancers){
+    const P = hive.patches[d.patch]; const theta = (P.az-hive.sunAz)*Math.PI/180;
+    const x = ox + d.cx*R, y = oy + d.cy*R, L = (2 + P.dist*2.4)*R*0.7 + R*2;
+    cx.strokeStyle = 'rgba(255,230,140,.55)'; cx.setLineDash([4,4]); cx.lineWidth=1.2;
+    cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x, y - L); cx.stroke();
+    cx.strokeStyle = d.pol ? P.col : 'rgba(255,200,60,.9)'; cx.setLineDash([]); cx.lineWidth=1.6;
+    cx.beginPath(); cx.moveTo(x,y); cx.lineTo(x+Math.sin(theta)*L, y-Math.cos(theta)*L); cx.stroke();
+    if (R>2.5){ cx.font='11px system-ui'; cx.fillStyle='rgba(255,240,200,.95)'; cx.fillText(P.name.split(' ')[0], x+Math.sin(theta)*L+4, y-Math.cos(theta)*L); }
+  }
+  // dance info
+  const di = $('danceInfo');
+  if (bees.dancers.length){
+    const d = bees.dancers[0], P = hive.patches[d.patch];
+    let rel = ((P.az - hive.sunAz + 540) % 360) - 180;
+    di.innerHTML = `💃 <b>${d.pol?'Pollen':'Nectar'} dance → ${P.name}</b>, ${P.dist.toFixed(1)} km · ${P.dist<0.15?'round dance (close by)':`waggle run ≈ ${(0.45+P.dist*0.9).toFixed(1)} s`} · ${Math.abs(rel).toFixed(0)}° ${rel>=0?'right':'left'} of vertical = ${Math.abs(rel).toFixed(0)}° ${rel>=0?'clockwise':'counter-clockwise'} from the sun` + (bees.dancers.length>1?` <span class="sub">(+${bees.dancers.length-1} more)</span>`:'');
+    di.style.display='block';
+  } else if (sel.box===0 && hive.canFly) { di.innerHTML = '<span class="sub">Dances happen on the lower brood frames near the entrance when foragers find profitable flowers.</span>'; di.style.display='block'; }
+  else di.style.display='none';
+}
+// zoom / pan / hover
+let drag=null;
+cv.addEventListener('wheel', e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const z0=view.z, z1=Math.max(1, Math.min(8, z0*Math.exp(-e.deltaY*0.0015)));
+  const X=(mx-geo.ox)/geo.R, Y=(my-geo.oy)/geo.R; view.z=z1; layout();
+  view.px += mx - (geo.ox + X*geo.R); view.py += my - (geo.oy + Y*geo.R); if (z1===1){view.px=0;view.py=0;} combDirty=true; }, {passive:false});
+cv.addEventListener('mousedown', e=>{ drag={x:e.clientX,y:e.clientY,px:view.px,py:view.py}; cv.style.cursor='grabbing'; });
+addEventListener('mouseup', ()=>{ drag=null; cv.style.cursor='grab'; });
+cv.addEventListener('mousemove', e=>{
+  if (drag){ view.px = drag.px + e.clientX-drag.x; view.py = drag.py + e.clientY-drag.y; combDirty=true; $('tip').style.display='none'; return; }
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const X=(mx-geo.ox)/geo.R, Y=(my-geo.oy)/geo.R;
+  let best=-1, bd=9;
+  const r0 = Math.round((Y-1)/1.5);
+  for (let rr=r0-1; rr<=r0+1; rr++){ if(rr<0||rr>=ROWS) continue; const c0=Math.round(X/S3-0.5-0.5*(rr&1)); for(let cc=c0-1;cc<=c0+1;cc++){ if(cc<0||cc>=COLS) continue; const d=Math.hypot(cellX(rr,cc)-X, cellY(rr)-Y); if(d<bd){bd=d;best=rr*COLS+cc;} } }
+  const tip=$('tip');
+  if (best<0 || bd>1.1){ tip.style.display='none'; return; }
+  const side=(sel.box*10+sel.frame)*2+sel.side, i=side*CPS+best;
+  tip.innerHTML = describeCell(i); tip.style.display='block';
+  tip.style.left = Math.min(mx+14, r.width-270)+'px'; tip.style.top = Math.min(my+14, r.height-90)+'px';
+});
+cv.addEventListener('mouseleave', ()=>$('tip').style.display='none');
+function describeCell(i){
+  const s=hive.st[i], a=hive.age[i], cs=hive.caste[i], dc=hive.droneCell[i];
+  const cn = ['Worker','Drone','Queen'][cs]; const D = DEV[cs];
+  const comb = dc ? 'drone-size cell (6.4 mm)' : 'worker-size cell (5.4 mm)';
+  const qc = hive.queenCells.find(q=>q.idx===i);
+  if (qc){ return qc.age<0 ? '<b>Queen cup</b><br>Waiting for the queen to lay in it.' : `<b>${qc.kind[0].toUpperCase()+qc.kind.slice(1)} queen cell</b><br>Day ${(qc.age/24).toFixed(1)} of 16 · ${qc.age<72?'egg':qc.age<192?'larva floating in royal jelly':'capped — queen pupa'}<br><span class="sub">Emerges in ${((384-qc.age)/24).toFixed(1)} d</span>`; }
+  if (!hive.drawn[i]) return '<b>Foundation</b><br>Wax sheet not yet drawn out into cells. Young bees (12–18 d) secrete wax flakes to build comb during a nectar flow.';
+  switch(s){
+    case 0: return `<b>Empty cell</b><br>Polished and ready · ${comb}`;
+    case 1: return `<b>Vacated cell</b><br>Bee just emerged — awaiting cleaning by young bees before reuse.`;
+    case 2: return `<b>${cn} egg</b> · ${(a/24).toFixed(1)} d old<br>${cs===1?'Unfertilised (haploid) — becomes a drone':'Fertilised'} · hatches at day 3`;
+    case 3: { const la=(a-72)/24; return `<b>${cn} larva</b> · day ${(a/24).toFixed(1)} of ${D.emerge/24}<br>${la<2.5?'Floating in royal jelly':'Fed worker jelly + honey & pollen'} · capped at day ${D.cap/24}<br><span class="sub">Nurses visit ~1,000+ times; colony feeding level ${(hive.fedFrac*100).toFixed(0)}%</span>`; }
+    case 4: return `<b>Capped ${cn.toLowerCase()} brood</b> · day ${(a/24).toFixed(1)} of ${D.emerge/24}<br>${a<D.cap+36?'Spinning cocoon / pre-pupa':'Pupa, developing adult features'}<br><span class="sub">Emerges in ${((D.emerge-a)/24).toFixed(1)} d · kept at ~34.5 °C</span>`;
+    case 5: { const sg=hive.sugar[i], w=hive.water[i], conc=sg/(sg+w), vol=sg/1.59+w, cap=dc?500:280; return `<b>Unripe nectar</b> · ${((sg+w)/1000).toFixed(2)} g<br>${(conc*100).toFixed(0)}% sugar (honey ≈ 82%) · ${(Math.min(1,vol/cap)*100).toFixed(0)}% full<br><span class="sub">Bees fan to evaporate water, then cap with wax</span>`; }
+    case 6: return `<b>Capped honey</b> · ${((hive.sugar[i]+hive.water[i])/1000).toFixed(2)} g<br>~${(hive.sugar[i]/(hive.sugar[i]+hive.water[i])*100).toFixed(0)}% sugar, sealed under a wax capping`;
+    case 7: { const p=hive.pcol[i]; return `<b>Bee bread</b> · ${hive.pol[i].toFixed(0)} mg pollen<br>${p?'Last load from '+FLORA[p-1].name:'Stored pollen'} <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${POLC[(p||1)-1]};vertical-align:middle"></span><br><span class="sub">Fermented pollen — the colony's protein source for brood food</span>`; }
+  }
+  return '';
+}
+function buildLegend(){
+  const items=[['#fbf8ee','Egg'],['#f4efe1','Larva'],['#c4935a','Capped worker brood'],['#9a6a30','Capped drone brood'],['#e4a524','Unripe nectar'],['#f1e2a6','Capped honey'],['#f08a12','Bee bread (pollen colour)'],['#2f1f0d','Empty cell'],['#e9dcaa','Foundation (undrawn)'],['#d1ad62','Queen cell']];
+  $('legend').innerHTML = items.map(([c,l])=>`<span><i style="background:${c}"></i>${l}</span>`).join('') + `<span id="roleLegend"></span>`;
+}
+function updateRoleLegend(){
+  const el=$('roleLegend'); if(!el) return;
+  el.innerHTML = colorRoles ? Object.entries({Cleaner:'cleaner',Nurse:'nurse','Storer/builder':'storer','Guard/fanner':'guard',Forager:'forager',Queen:'queen'}).map(([l,k])=>`<span style="margin-left:8px"><i style="background:${ROLE_COL[k]};border-radius:50%"></i>${l}</span>`).join('') : '';
+}
+
+// ======================================================= landscape
+const lc = $('land'), lx = lc.getContext('2d');
+const landBg = document.createElement('canvas');
+let landKey = '', particles = [], swarmFx = null, lastSwarmT = null, landHover = null;
+function landGeom(){ const W=lc.clientWidth; return { W, cx: W/2, cy: W/2, k: (W/2-14)/4.2 }; }
+function renderLandBg(){
+  const dpr=devicePixelRatio||1, {W,cx:c0,cy:c1,k}=landGeom();
+  landBg.width=W*dpr; landBg.height=W*dpr; const g=landBg.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  const doy=hive.doy; const summer = Math.max(0, Math.sin(2*Math.PI*(doy-80)/365));
+  const greenR = Math.round(70+40*(1-summer)), greenG = Math.round(95+45*summer), greenB = Math.round(45+10*(1-summer));
+  g.fillStyle=`rgb(${greenR},${greenG},${greenB})`; g.fillRect(0,0,W,W);
+  const rnd = mulberry32(hive.seed+3);
+  for (let t=0;t<240;t++){ const x=rnd()*W, y=rnd()*W, r=3+rnd()*16; g.fillStyle=`rgba(${rnd()<.5?'30,60,20':'120,140,60'},${0.08+rnd()*0.1})`; g.beginPath(); g.arc(x,y,r,0,7); g.fill(); }
+  // creek
+  const cr = hive.creek; g.strokeStyle='rgba(90,150,210,.85)'; g.lineWidth=3; g.beginPath();
+  for (let s=-1.2;s<=1.2;s+=0.05){ const ax = Math.cos(cr.az*Math.PI/180), ay = Math.sin(cr.az*Math.PI/180); const x=c0+cr.x*k + ax*s*k + Math.sin(s*4)*6, y=c1+cr.y*k + ay*s*k + Math.cos(s*4)*6; if(s<=-1.2) g.moveTo(x,y); else g.lineTo(x,y); } g.stroke();
+  // rings
+  g.strokeStyle='rgba(255,255,255,.16)'; g.lineWidth=1; g.font='10px system-ui'; g.fillStyle='rgba(255,255,255,.45)';
+  for (let r=1;r<=4;r++){ g.beginPath(); g.arc(c0,c1,r*k,0,7); g.stroke(); g.fillText(r+' km', c0+r*k*0.707+2, c1-r*k*0.707-2); }
+  g.fillStyle='rgba(255,255,255,.6)'; g.font='bold 11px system-ui'; g.fillText('N', c0-4, 12);
+}
+function drawLand(dt){
+  const dpr=devicePixelRatio||1, {W,cx:c0,cy:c1,k}=landGeom();
+  if (lc.width!==W*dpr){ lc.width=W*dpr; lc.height=W*dpr; landKey=''; }
+  const key = W+'_'+Math.floor(hive.doy/7);
+  if (key!==landKey){ renderLandBg(); landKey=key; }
+  const g=lx; g.setTransform(1,0,0,1,0,0); g.drawImage(landBg,0,0); g.setTransform(dpr,0,0,dpr,0,0);
+  // patches
+  for (const P of hive.patches){
+    const x=c0+P.x*k, y=c1+P.y*k, rad = 4 + Math.sqrt(P.nec+P.pol)/22;
+    if (P.bloom>0.01){
+      g.globalAlpha = 0.35+0.6*P.bloom; g.fillStyle=P.col; g.beginPath();
+      for (let a=0;a<6.3;a+=0.5){ const rr = rad*(0.8+0.25*Math.sin(a*3+P.id)); const px=x+Math.cos(a)*rr, py=y+Math.sin(a)*rr; a===0?g.moveTo(px,py):g.lineTo(px,py); } g.closePath(); g.fill();
+      g.globalAlpha=1; g.strokeStyle='rgba(255,255,255,.5)'; g.lineWidth=1; g.stroke();
+      const nf = hive.flyN[P.id]+hive.flyP[P.id];
+      if (nf>0 || landHover===P){ g.font='10.5px system-ui'; g.fillStyle='rgba(0,0,0,.55)'; const txt=P.name+(nf?` · ${fmt(nf)}`:''); const tw=g.measureText(txt).width; g.fillRect(x+rad+2,y-7,tw+6,13); g.fillStyle='#fff'; g.fillText(txt, x+rad+5, y+3); }
+    } else { g.strokeStyle='rgba(255,255,255,.18)'; g.setLineDash([2,3]); g.beginPath(); g.arc(x,y,rad*0.7,0,7); g.stroke(); g.setLineDash([]); }
+  }
+  // particles
+  syncParticles(c0,c1,k);
+  for (const p of particles){
+    p.t += dt*p.v*(p.out?1:1);
+    if (p.out && p.t>=1){ p.out=false; p.t=0; p.linger = 0.4+Math.random()*1.2; }
+    if (!p.out && p.linger>0){ p.linger-=dt; }
+    else if (!p.out && p.t>=1){ p.dead = true; }
+    let fx, fy;
+    const tx=p.tx, ty=p.ty;
+    if (p.out){ fx=c0+(tx-c0)*p.t; fy=c1+(ty-c1)*p.t; }
+    else if (p.linger>0){ fx=tx+Math.sin(p.ph+=dt*6)*3; fy=ty+Math.cos(p.ph*1.3)*3; }
+    else { fx=tx+(c0-tx)*p.t; fy=ty+(c1-ty)*p.t; }
+    const perp = Math.sin(p.t*Math.PI)*p.bend; const ang=Math.atan2(ty-c1,tx-c0);
+    fx += -Math.sin(ang)*perp; fy += Math.cos(ang)*perp;
+    g.fillStyle = p.kind==='w' ? '#7fc0ff' : p.kind==='d' ? '#2a2016' : '#ffd23a';
+    g.beginPath(); g.arc(fx,fy,p.kind==='d'?1.9:1.5,0,7); g.fill();
+    if (p.kind==='p' && !p.out){ g.fillStyle=p.col; g.beginPath(); g.arc(fx+1.2,fy+1,1.2,0,7); g.fill(); }
+  }
+  particles = particles.filter(p=>!p.dead);
+  // swarm
+  if (hive.swarmEvent && hive.swarmEvent.t!==lastSwarmT){ lastSwarmT=hive.swarmEvent.t; const a=Math.random()*6.28; swarmFx={ t:0, bx:c0+Math.cos(a)*k*0.25, by:c1+Math.sin(a)*k*0.25, away:Math.random()*6.28, dots:Array.from({length:260},()=>({a:Math.random()*6.28,r:Math.random(),s:0.5+Math.random()})) }; }
+  if (swarmFx){
+    const s=swarmFx; s.t+=dt; const T=s.t;
+    for (const d of s.dots){
+      let x,y;
+      if (T<4){ const f=T/4; const cxp=c0+(s.bx-c0)*f, cyp=c1+(s.by-c1)*f; x=cxp+Math.cos(d.a+T*d.s*3)*18*(1-f*0.5)*d.r*2; y=cyp+Math.sin(d.a+T*d.s*3)*18*(1-f*0.5)*d.r*2; }
+      else if (T<10){ x=s.bx+Math.cos(d.a)*d.r*6; y=s.by+Math.sin(d.a)*d.r*8+4; }
+      else { const f=(T-10)*0.25; x=s.bx+Math.cos(s.away)*f*W + Math.cos(d.a+T*4)*10*d.r; y=s.by+Math.sin(s.away)*f*W + Math.sin(d.a+T*4)*10*d.r; }
+      g.fillStyle='#ffd23a'; g.fillRect(x,y,1.6,1.6);
+    }
+    g.font='bold 12px system-ui'; g.fillStyle='#ffd23a'; g.fillText(T<10?'SWARM! clustering on a branch…':'Swarm leaving for a new home', 8, W-10);
+    if (T>16) swarmFx=null;
+  }
+  // hive
+  g.fillStyle='#e9d9a6'; g.fillRect(c0-6,c1-8,12,14); g.fillStyle='#8a6a3e'; g.fillRect(c0-7,c1-9,14,3); g.fillStyle='#222'; g.fillRect(c0-3,c1+3,6,2);
+  // sun & sky
+  const el = hive.sunEl, az = hive.sunAz*Math.PI/180;
+  if (el>-6){ const sx=c0+Math.sin(az)*(W/2-10), sy=c1-Math.cos(az)*(W/2-10); g.fillStyle = el>0?'#ffe27a':'#ff9a5a'; g.beginPath(); g.arc(sx,sy,6,0,7); g.fill();
+    g.strokeStyle='rgba(255,226,122,.35)'; g.setLineDash([3,4]); g.beginPath(); g.moveTo(c0,c1); g.lineTo(sx,sy); g.stroke(); g.setLineDash([]); }
+  const night = el<0 ? Math.min(0.62, -el/12*0.62+0.18) : (el<6?0.12*(1-el/6):0);
+  if (night>0){ g.fillStyle=`rgba(10,15,45,${night})`; g.fillRect(0,0,W,W); }
+  if (hive.raining){ g.strokeStyle='rgba(180,200,255,.35)'; g.lineWidth=1; g.beginPath(); for(let t=0;t<90;t++){ const x=(t*53+performance.now()*0.25)%W, y=(t*97+performance.now()*0.6)%W; g.moveTo(x,y); g.lineTo(x-3,y+8);} g.stroke(); }
+  if (hive.Tout<0){ g.fillStyle='rgba(220,235,255,.18)'; g.fillRect(0,0,W,W); }
+}
+function syncParticles(c0,c1,k){
+  const NP=hive.patches.length; let total=hive.flyW+hive.flyScout+hive.flyDrones; for(let p=0;p<NP;p++) total+=hive.flyN[p]+hive.flyP[p];
+  const sc = total>320 ? 320/total : 1;
+  const have = {}; for (const p of particles) have[p.key]=(have[p.key]||0)+1;
+  const add=(key,kind,tx,ty,n,col)=>{ const want=Math.round(n*sc+ (n>0&&n*sc<1?1:0)); for(let j=(have[key]||0); j<want && j<(have[key]||0)+3; j++){ particles.push({key,kind,tx:tx+(Math.random()-.5)*8,ty:ty+(Math.random()-.5)*8,t:Math.random()*0.3,out:true,v:0.25+Math.random()*0.25,bend:(Math.random()-.5)*10,ph:Math.random()*6,col}); } };
+  for (const P of hive.patches){ add('n'+P.id,'n',c0+P.x*k,c1+P.y*k,hive.flyN[P.id]); add('p'+P.id,'p',c0+P.x*k,c1+P.y*k,hive.flyP[P.id],P.col); }
+  add('w','w',c0+hive.creek.x*k,c1+hive.creek.y*k,hive.flyW);
+  if (!window._dca){ const a=Math.random()*6.28; window._dca=[Math.cos(a)*1.4,Math.sin(a)*1.4]; }
+  add('d','d',c0+window._dca[0]*k,c1+window._dca[1]*k,hive.flyDrones);
+  if (hive.flyScout>0){ const a=Math.random()*6.28, d=0.5+Math.random()*3; add('s'+(Date.now()>>11&7),'n',c0+Math.cos(a)*d*k,c1+Math.sin(a)*d*k,Math.min(2,hive.flyScout)); }
+}
+lc.addEventListener('mousemove', e=>{ const r=lc.getBoundingClientRect(), {cx:c0,cy:c1,k}=landGeom(); const mx=e.clientX-r.left,my=e.clientY-r.top; let best=null,bd=14; for(const P of hive.patches){ const d=Math.hypot(c0+P.x*k-mx,c1+P.y*k-my); if(d<bd){bd=d;best=P;} } landHover=best; updateLandInfo(); });
+lc.addEventListener('mouseleave', ()=>{ landHover=null; updateLandInfo(); });
+function updateLandInfo(){
+  const P=landHover, el=$('landInfo');
+  if (P){ const b=P.bloom; el.innerHTML = `<b style="color:${P.col}">●</b> <b>${P.name}</b> · ${P.dist.toFixed(2)} km ${compass(P.az)} · ${b>0.01?`in bloom (${(b*100).toFixed(0)}%)`:`blooms ${doyToDate(P.s)} – ${doyToDate(P.e)}`}<br>${P.nec?`nectar ~${(P.conc*100).toFixed(0)}% sugar`:'pollen only'} · pollen colour <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${P.col};vertical-align:middle"></span> · foragers now: ${fmt(hive.flyN[P.id]+hive.flyP[P.id])}`; }
+  else { const out=hive.outCount(); el.innerHTML = hive.canFly ? `${fmt(out)} foragers in the air · ${fmt(hive.flyDrones)} drones on mating flights · yellow = nectar, coloured dot = pollen load, blue = water` : (hive.isDay ? (hive.raining?'Raining — foragers stay home.':`Too cold to fly (${hive.Tout.toFixed(0)} °C < ~12 °C).`) : 'Night — all foragers are home.'); }
+}
+function compass(az){ return ['N','NE','E','SE','S','SW','W','NW'][Math.round(az/45)%8]; }
+
+// ======================================================= stats
+function bar(label, v, max, col, sub){ return `<div class="bar"><span>${label}</span><div><i style="width:${Math.min(100,v/max*100)}%;background:${col}"></i></div><b>${sub??fmt(v)}</b></div>`; }
+function updateStats(){
+  const c=hive.cnt, r=hive.roles, q=hive.queen, L=hive.lastDay||{};
+  const honey = c.honeySugar/0.82/1e6, nect=(c.nectarSugar+c.nectarWater)/1e6, pol=c.pollen/1e6;
+  const brood = c.eggs+c.larvae+c.dLarvae+c.capped+c.dCapped;
+  let qs;
+  if (!q.present) qs = `<span class="bad">Queenless</span>${hive.queenCells.length?` · ${hive.queenCells.length} queen cells`:''}${hive.layingWorkers?' · laying workers':''}`;
+  else if (q.virgin) qs = `<span class="warn">Virgin queen</span>, ${q.vAge.toFixed(0)} d old · ${q.flights} mating flight(s)`;
+  else if (q.droneLayer) qs = `<span class="bad">Unmated drone-layer</span>`;
+  else if (!q.laying) qs = `<span class="warn">Mated, not yet laying</span>`;
+  else qs = `<span class="good">Mated & laying</span> · ${fmt(hive.queenLayRate())} eggs/day · ${(q.ageD/365).toFixed(1)} yr`;
+  const clustered = hive.Tout<14;
+  const nestT = brood>200 ? '34.5 °C (brood nest)' : clustered ? '~21 °C core (cluster)' : '~32 °C';
+  const maxR = Math.max(r.cleaners,r.nurses,r.storers,r.guards,r.foragers,1);
+  let dances = []; for(let p=0;p<hive.patches.length;p++){ const v=hive.danceN[p]+hive.danceP[p]; if(v>0) dances.push([v,p]); } dances.sort((a,b)=>b[0]-a[0]);
+  const dTot = dances.reduce((a,b)=>a+b[0],0);
+  $('stats').innerHTML = `
+  <div class="ph"><h2>Colony</h2><span>${fmt(hive.nWorkers+hive.nDrones)} adult bees</span></div>
+  <div class="grid">
+    <div class="kv"><span>Workers</span><b>${fmt(hive.nWorkers)}</b></div><div class="kv"><span>Drones</span><b>${fmt(hive.nDrones)}</b></div>
+    <div class="kv"><span>Eggs</span><b>${fmt(c.eggs)}</b></div><div class="kv"><span>Larvae</span><b>${fmt(c.larvae+c.dLarvae)}</b></div>
+    <div class="kv"><span>Capped brood</span><b>${fmt(c.capped+c.dCapped)}</b></div><div class="kv"><span>…of which drone</span><b>${fmt(c.dCapped+c.dLarvae)}</b></div>
+    <div class="kv"><span>Honey (capped)</span><b>${honey.toFixed(1)} kg</b></div><div class="kv"><span>Unripe nectar</span><b>${nect.toFixed(1)} kg</b></div>
+    <div class="kv"><span>Bee bread</span><b>${(pol*1000).toFixed(0)} g</b></div><div class="kv"><span>Hive temp</span><b>${nestT}</b></div>
+  </div>
+  <div class="kv" style="margin-top:4px"><span>Queen</span><b style="font-weight:500">${qs}</b></div>
+  ${hive.swarmPrep?`<div class="kv"><span class="swarm">Swarm preparations</span><b>${hive.queenCells.length} queen cells</b></div>`:''}
+  <div class="bars">
+    ${bar('Cleaners (0–2 d)', r.cleaners, maxR, ROLE_COL.cleaner)}
+    ${bar('Nurses (3–11 d)', r.nurses, maxR, ROLE_COL.nurse)}
+    ${bar('Storers & builders', r.storers, maxR, ROLE_COL.storer)}
+    ${bar('Guards & fanners', r.guards, maxR, ROLE_COL.guard)}
+    ${bar('Foragers', r.foragers, maxR, ROLE_COL.forager)}
+  </div>
+  <div class="sub" style="margin-top:3px">Foraging starts at age ≈ ${hive.onset.toFixed(0)} d · larvae fed ${(hive.fedFrac*100).toFixed(0)}% · ${hive.unloadDelay>4?`<span class="warn">foragers wait ${hive.unloadDelay.toFixed(0)} min to unload (tremble dancing)</span>`:'unloading quickly'}</div>
+  <div class="ph" style="margin-top:8px"><h2>Yesterday</h2></div>
+  <div class="grid">
+    <div class="kv"><span>Nectar in</span><b>${(L.nectarIn||0).toFixed(2)} kg</b></div><div class="kv"><span>Pollen in</span><b>${fmt(L.pollenIn||0)} g</b></div>
+    <div class="kv"><span>Foraging trips</span><b>${fmt(L.trips||0)}</b></div><div class="kv"><span>Eggs laid</span><b>${fmt(L.laid||0)}</b></div>
+    <div class="kv"><span>Bees emerged</span><b>${fmt(L.emerged||0)}</b></div><div class="kv"><span>Adult deaths</span><b>${fmt(L.deaths||0)}</b></div>
+  </div>
+  ${dTot>0?`<div class="ph" style="margin-top:8px"><h2>Dance floor now</h2></div>${dances.slice(0,4).map(([v,p])=>{const P=hive.patches[p];return bar(P.name.length>17?P.name.slice(0,16)+'…':P.name, v, dances[0][0], P.col, (v/dTot*100).toFixed(0)+'%');}).join('')}`:''}`;
+}
+
+// ======================================================= chart
+const ch=$('chart'), chx=ch.getContext('2d');
+function drawChart(){
+  const dpr=devicePixelRatio||1, W=ch.clientWidth, H=ch.clientHeight; if(ch.width!==W*dpr){ch.width=W*dpr;ch.height=H*dpr;}
+  const g=chx; g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const hs = hive.history.slice(-365); if (hs.length<2){ g.fillStyle='#b7a37e'; g.font='12px system-ui'; g.fillText('Collecting data — a point is added each simulated day.', 8, H/2); return; }
+  const L=34, Rr=34, T=16, B=18, pw=W-L-Rr, ph=H-T-B;
+  const maxB = Math.max(10000, ...hs.map(h=>Math.max(h.workers,h.brood)))*1.08, maxH = Math.max(10, ...hs.map(h=>h.honey+h.nectar))*1.1;
+  const X = i => L + i/(364)*pw;
+  g.strokeStyle='#33271a'; g.lineWidth=1; g.font='10px system-ui'; g.fillStyle='#8f7d5c';
+  for (let k=0;k<=4;k++){ const y=T+ph*k/4; g.beginPath(); g.moveTo(L,y); g.lineTo(L+pw,y); g.stroke(); g.fillText(fmt(maxB*(1-k/4)/1000)+'k', 2, y+3); g.fillText((maxH*(1-k/4)).toFixed(0)+'kg', L+pw+3, y+3); }
+  hs.forEach((h,i)=>{ if (h.doy%30===0 || i===0){ } const md = doyToDate(h.doy); if (md.endsWith(' 1')) { g.fillText(md.slice(0,3), X(i)-6, H-4); g.beginPath(); g.moveTo(X(i),T); g.lineTo(X(i),T+ph); g.stroke(); } });
+  // honey area
+  g.fillStyle='rgba(242,194,74,.28)'; g.beginPath(); g.moveTo(X(0),T+ph); hs.forEach((h,i)=>g.lineTo(X(i), T+ph-(h.honey+h.nectar)/maxH*ph)); g.lineTo(X(hs.length-1),T+ph); g.fill();
+  const line=(f,col,w)=>{ g.strokeStyle=col; g.lineWidth=w; g.beginPath(); hs.forEach((h,i)=>{ const y=T+ph-f(h)/maxB*ph; i?g.lineTo(X(i),y):g.moveTo(X(i),y); }); g.stroke(); };
+  line(h=>h.brood,'#b07a3a',1.6); line(h=>h.drones*5,'#8a8a8a',1); line(h=>h.workers,'#ffd24a',2);
+  g.font='11px system-ui'; [['Workers','#ffd24a'],['Brood','#b07a3a'],['Drones ×5','#8a8a8a'],['Honey+nectar (kg)','#f2c24a']].reduce((x,[l,c])=>{ g.fillStyle=c; g.fillRect(x,4,8,8); g.fillStyle='#d9c8a4'; g.fillText(l,x+11,12); return x+g.measureText(l).width+24; }, L);
+}
+
+// ======================================================= log, clock
+function updateLog(){
+  $('log').innerHTML = hive.log.slice().reverse().slice(0,80).map(l=>{ const d=Math.floor(l.t/24); return `<div class="${l.kind}"><span class="t">Y${Math.floor(d/365)+1} ${doyToDate(d%365)} ${String(Math.floor(l.t%24)).padStart(2,'0')}:00</span>${l.msg}</div>`; }).join('') || '<div class="sub">Nothing notable yet.</div>';
+}
+let lastLogLen=-1;
+function updateClock(){
+  const t = hive.t + simAcc, h = t%24, d=Math.floor(t/24);
+  const hh=Math.floor(h), mm=Math.floor((h-hh)*60);
+  const wx = hive.raining ? '🌧 rain' : !hive.isDay ? (hive.sunEl>-6?'🌅 twilight':'🌙 night') : hive.wx.cloud>0.5?'⛅ cloudy':'☀️ sunny';
+  $('clock').innerHTML = `Year ${Math.floor(d/365)+1} · <b>${doyToDate(d%365)}</b> · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} <span class="wx">${wx} · ${hive.Tout.toFixed(1)} °C · daylight ${(hive.sunset-hive.sunrise).toFixed(1)} h</span>`;
+  const side=(sel.box*10+sel.frame)*2+sel.side, o=side*8, ss=hive.sideStats; const nb=beesOnSide();
+  $('frameLabel').innerHTML = `Box ${sel.box+1} · frame ${sel.frame+1} · side ${'AB'[sel.side]} — ~${fmt(nb.w)} workers${nb.d?`, ${fmt(nb.d)} drones`:''} on this face${bees.scale>1?` (showing ${MAXS}, 1 sprite ≈ ${bees.scale.toFixed(1)} bees)`:''} · ${fmt(ss[o])} brood · ${fmt(ss[o+1]+ss[o+2])} honey/nectar · ${fmt(ss[o+3])} pollen &nbsp;<span class="sub">(click the boxes above or use arrow keys)</span>`;
+  $('bQueen').disabled = hive.queen.present;
+  $('bSuper').disabled = hive.nBoxes>=3;
+}
+
+// ======================================================= controls
+$('bSuper').onclick=()=>{ hive.addSuper(); combDirty=true; drawHiveMap(); updateLog(); };
+$('bHarvest').onclick=()=>{ hive.harvest(); combDirty=true; updateLog(); };
+$('bFeed').onclick=()=>{ hive.feed(); updateLog(); };
+$('bQueen').onclick=()=>{ hive.introduceQueen(); updateLog(); };
+$('tSwarm').onchange=e=>{ hive.allowSwarm=e.target.checked; };
+$('tRole').onchange=e=>{ colorRoles=e.target.checked; updateRoleLegend(); };
+$('bNew').onclick=()=>newColony(+$('startSel').value);
+function refreshCounts(){ /* comb redraw shows result; counts refresh on next hour */ }
+
+// ======================================================= main loop
+let lastT = performance.now(), slowFrames = 0, uiTimer = 0;
+function frame(now){
+  const dt = Math.min(0.1, (now-lastT)/1000); lastT = now;
+  if (hive && !window._loading){
+    const sp = SPEEDS[speedIdx][1];
+    if (sp>0){
+      simAcc += sp*dt/3600;
+      const tickH = 1/6; let n = Math.floor(simAcc/tickH);
+      const t0 = performance.now();
+      while (n>0){ hive.tick(tickH); simAcc -= tickH; n--; if (performance.now()-t0 > 26) break; }
+      if (simAcc > 2) simAcc = 0;   // can't keep up: run at max sustainable speed
+    }
+    const H = Math.floor(hive.t);
+    if (H!==lastHourSeen){ lastHourSeen=H; combDirty=true; drawHiveMap(); }
+    const D = Math.floor(hive.t/24);
+    if (D!==lastDaySeen){ lastDaySeen=D; drawChart(); }
+    if (hive.log.length!==lastLogLen || (hive.log.length && hive.log[hive.log.length-1]!==window._lastLog)){ lastLogLen=hive.log.length; window._lastLog=hive.log[hive.log.length-1]; updateLog(); }
+    updateBees(dt);
+    drawComb();
+    drawLand(dt);
+    uiTimer -= dt; if (uiTimer<=0){ uiTimer=0.25; updateStats(); updateClock(); updateLandInfo(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function newColony(startDoy){
+  window._loading = true; $('loading').style.display='flex';
+  const target = startDoy, seed = (Math.random()*1e9)|0;
+  hive = new Hive({ seed, startDoy: 59, allowSwarm: $('tSwarm').checked });
+  bees.reset(); particles=[]; swarmFx=null; lastSwarmT=null; landKey=''; simAcc=0; window._dca=null;
+  const days = target-59;
+  const step = () => {
+    const t0=performance.now();
+    while (hive.doy < target && performance.now()-t0 < 60) hive.tick(1/6);
+    $('loadBar').style.width = (days>0 ? Math.min(100,(hive.doy-59)/days*100) : 100)+'%';
+    $('loadMsg').textContent = days>0 ? `Simulating the colony from Mar 1 to ${doyToDate(target)}… (${doyToDate(hive.doy)})` : 'Preparing colony…';
+    if (hive.doy < target && days>0) { setTimeout(step, 0); return; }
+    // advance to 9:00
+    while (Math.floor(hive.t%24)!==9) hive.tick(1/6);
+    window._loading=false; $('loading').style.display='none';
+    sel={box:0,frame:4,side:1}; combDirty=true; lastHourSeen=-1; lastDaySeen=-1; lastLogLen=-1;
+    drawHiveMap(); drawChart(); updateLog(); updateStats(); updateClock();
+  };
+  setTimeout(step, 30);
+}
+buildLegend();
+addEventListener('resize', ()=>{ combDirty=true; landKey=''; if(hive){drawHiveMap(); drawChart();} });
+newColony(110);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
