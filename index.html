@@ -358,7 +358,7 @@ class Hive {
     this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
     this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
-    this.idleDays = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.idleDays = 0; this.evictN = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
     this.history = []; this.resetDay();
@@ -634,7 +634,8 @@ class Hive {
       } else {
         if (!initial) {
           this.wear[i] += 1 / 40 / 24;
-          if (this.wear[i] >= 1 || (evict && R() < 0.012) || R() < 0.0004) { this.killBee(i); continue; }
+          if (evict && R() < 0.012) { this.killBee(i); this.evictN++; continue; }   // dragged out of the hive by workers
+          if (this.wear[i] >= 1 || R() < 0.0004) { this.killBee(i); continue; }
           if (droneFly && a >= 12) { droneFlying++; if (R() < 0.012) { this.killBee(i); continue; } }
         }
         if (a >= 12) matureDrones++;
@@ -1782,6 +1783,7 @@ const BEE_SIDE_H = 1.0;
 function drawBeeSide(ctx, x, y, dir, s, kind, opt){
   ctx.save(); ctx.translate(x,y); ctx.scale(s*dir, s);
   if (opt.fly) ctx.rotate(-0.5 + 0.35*(opt.pitch||0));   // in flight: nose up ~30°, abdomen hanging below
+  if (opt.spin) ctx.rotate(opt.spin);
   const Q = kind==='q', Dr = kind==='d', fly = opt.fly, detail = s > 3.2, ph = (opt.step||0)*9;
   const ink = '#24170b';
   // legs: three on the near side (the far three are hidden behind the body), stepping in a tripod gait
@@ -1998,6 +2000,23 @@ function leave(b){
   let best=cand[0], bd=1e9; for (const c of cand){ const d=Math.hypot(c[0]-b.x,c[1]-b.y)*(c[1]>COMB_H-1&&sel.box===0?0.6:1); if(d<bd){bd=d;best=c;} }
   b.gone=true; b.tx=best[0]; b.ty=best[1]; b.mode='walk'; b.next='exit'; b.cell=null;
 }
+// end of season: workers grip a drone by a wing or leg and haul him to the entrance and out; he can't get back in.
+// (In the bottom box she drags him down onto the floor, out through the entrance and pushes him off the landing board;
+// in upper boxes she drags him down off the comb toward the entrance below.)
+function evictDrone(d){
+  if (d.claim!=null){ bees.claimed.delete(d.claim); d.claim=null; }
+  let w = null, bd = 1e9;
+  for (const b of bees.list){ if (b.kind!=='w' || b.gone || b.dragging || b.unload || b.forager || !(b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')) continue;
+    const dd = Math.hypot(b.x-d.x, b.y-d.y); if (dd < bd){ bd = dd; w = b; } }
+  if (!w || bd > 25){ w = newSprite('w'); w.x = d.x; w.y = d.y + 2.4; bees.list.push(w); }
+  if (w.claim!=null){ bees.claimed.delete(w.claim); w.claim=null; }
+  d.gone = true; d.evicted = true; d.dragger = w; d.cell = null; d.buzz = false;
+  w.dragging = d; w.mode = 'drag'; w.role = 'guard';
+  const fy = HB.FT - BEE_SIDE_H, xb = Math.max(1.5, Math.min(COMB_W*0.4, d.x));
+  if (sel.box===0){ d.path = [ [xb, fy, 1.6, false, true], [HB.WIN+0.8, fy, 1.6, false, true], [HB.LB+0.9, fy, 1.6, false, true] ]; d.tx = xb; d.ty = COMB_H-1.2; d.next = 'fall'; }
+  else { d.path = []; d.tx = d.x; d.ty = COMB_H-0.5; d.next = 'exit'; }
+  d.spd = 1.6; d.mode = 'walk';
+}
 function clusterCenter(){
   const L = sideLists && sideLists.brood.length ? sideLists.brood : null;
   if (L){ let sx=0,sy=0; for(let k=0;k<L.length;k+=7){ const p=bees.cellPos(L[k]); sx+=p[0]; sy+=p[1]; } const n=Math.ceil(L.length/7); return [sx/n, sy/n]; }
@@ -2113,7 +2132,7 @@ function updateBees(dt){
   for (let k=0;k<inD;k++) if (Math.random()<0.3) bees.list.push(enteringSprite('d'));
   const outW = Math.min(4, cw - nW - 2), outD = Math.min(2, cd - nD);
   for (let k=0;k<outW;k++){ const z = bees.list.find(b=>b.kind==='w' && !b.gone && !b.unload && (b.mode==='rest'||b.mode==='idle'||b.mode==='walk'||b.mode==='work')); if (z) leave(z); }
-  for (let k=0;k<outD;k++){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z) leave(z); }
+  for (let k=0;k<outD;k++){ const z = bees.list.find(b=>b.kind==='d' && !b.gone); if (z){ if (hive.evictDrones) evictDrone(z); else leave(z); } }
   bees.list = bees.list.filter(b=>b.mode!=='exit');
   // role refresh slowly
   if (Math.random()<0.02 && bees.list.length){ const b=bees.list[(Math.random()*bees.list.length)|0]; if(b.kind==='w'&&b.mode!=='dance'&&b.mode!=='follow'&&b.mode!=='retinue') b.role=pickRole(); }
@@ -2200,7 +2219,8 @@ function moveBee(b, dt, speed){
   if (b.mode!=='walk') return;
   const dx=b.tx-b.x, dy=b.ty-b.y, d=Math.hypot(dx,dy);
   const arrive = () => { if (b.path && b.path.length){ const p=b.path.shift(); b.tx=p[0]; b.ty=p[1]; b.spd=p[2]||0; b.buzz=!!p[3]; b.side=!!p[4]; return; }
-    b.spd=0; b.buzz=false; b.side=false; b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
+    b.spd=0; b.buzz=false; if (b.next!=='fall') b.side=false; else { b.vx=-2.5; b.vy=-3; }
+    b.mode = b.next || 'idle'; if (b.mode==='work'||b.mode==='lay'){ b.t=b.work||4; if(b.cell) b.a=Math.atan2(b.cell[1]-b.y,b.cell[0]-b.x); } else b.t = b.work||(2+Math.random()*4); };
   if (d < 0.4){ arrive(); return; }
   const want = Math.atan2(dy,dx);
   if (d < 1.6){   // last step: walk straight onto the spot (no orbiting around it)
@@ -2216,6 +2236,27 @@ function moveBee(b, dt, speed){
 }
 function stepBee(b, dt){
   b.wob += dt;
+  if (b.mode==='drag'){   // she walks backwards ahead of the drone, gripping him, facing him
+    const d = b.dragging;
+    if (!d || d.mode==='exit' || d.mode==='fall'){
+      b.dragging = null;
+      if (d && d.mode==='fall' && sel.box===0){ const fy = HB.FT - BEE_SIDE_H, xr = 2 + Math.random()*10;
+        b.path = [ [HB.WIN+0.8, fy, 0, false, true], [xr, fy, 0, false, true], [xr, COMB_H-1.2] ]; b.tx = b.x + 1.5; b.ty = fy; b.side = true; b.mode = 'walk'; b.next = 'idle'; b.work = 1; }
+      else { b.mode = 'idle'; b.t = 0; b.side = false; }
+      return;
+    }
+    let ux = d.tx - d.x, uy = d.ty - d.y; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+    const gap = d.side ? 3.4 : 2.5;
+    b.x = d.x + ux*gap; b.y = d.y + uy*gap; b.side = d.side; b.tx = d.x; b.ty = d.y; b.buzz = false;
+    b.a = Math.atan2(-uy, -ux) + Math.sin(b.wob*9)*0.08;
+    return;
+  }
+  if (b.mode==='fall'){   // pushed off the front of the landing board
+    b.vy = (b.vy||0) + 40*dt; b.x += (b.vx ?? -2)*dt; b.y += b.vy*dt; b.spin = (b.spin||0) + dt*5;
+    if (b.y > HB.FB + 60) b.mode = 'exit';
+    return;
+  }
+  if (b.evicted && b.mode==='walk') b.a += Math.sin(b.wob*7)*0.04;   // he resists, legs scrabbling
   if (b.mode==='retinue' && bees.queen){
     const q=bees.queen; const a = b.slot; const tx=q.x+Math.cos(a)*2.9, ty=q.y+Math.sin(a)*2.4;
     const far = approach(b, tx, ty, dt, 4.5);
@@ -2361,7 +2402,7 @@ function drawComb(){
   }
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
-    if (b.side){ const dx=b.tx-b.x, dy=b.ty-b.y; drawBeeSide(cx, x, y, dx>=0?1:-1, sc, b.kind, { fly:b.buzz, pitch: b.buzz ? Math.max(-0.5, Math.min(0.5, Math.atan2(dy, Math.abs(dx)+1e-6))) : 0, step:b.wob, pollen:b.pollen, load:b.load, dust:b.dust||0, dustCol:b.dustCol, seed:b.seed, role: role ? ROLE_COL[b.role] : null }); continue; }
+    if (b.side){ const dx=b.tx-b.x, dy=b.ty-b.y; drawBeeSide(cx, x, y, b.mode==='fall'?-1:(dx>=0?1:-1), sc, b.kind, { spin: b.spin, fly:b.buzz, pitch: b.buzz ? Math.max(-0.5, Math.min(0.5, Math.atan2(dy, Math.abs(dx)+1e-6))) : 0, step:b.wob, pollen:b.pollen, load:b.load, dust:b.dust||0, dustCol:b.dustCol, seed:b.seed, role: role ? ROLE_COL[b.role] : null }); continue; }
     drawBee(cx, x, y, b.a, sc, b.kind, { pale: b.born!=null ? Math.max(0, 1-(hive.t+simAcc-b.born)/24) : 0, buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
@@ -2615,7 +2656,7 @@ function compass(az){ return ['N','NE','E','SE','S','SW','W','NW'][Math.round(az
 // Every flight in the simulation starts or ends here, so arrivals and departures are drawn at the colony's real
 // landing / take-off rate × simulation speed. When that is more than can be drawn, each bee shown stands for several.
 const ec = $('ent'), ex = ec.getContext('2d');
-const ENT = { bees: [], accIn: 0, accOut: 0, scale: 1, inRate: 0, outRate: 0, guards: [], fanners: [], orient: [], beard: null, CAP: 5 };
+const ENT = { bees: [], accEv: 0, outcasts: [], accIn: 0, accOut: 0, scale: 1, inRate: 0, outRate: 0, guards: [], fanners: [], orient: [], beard: null, CAP: 5 };
 function entGeom(){ const W = ec.clientWidth, H = ec.clientHeight;
   return { W, H, wallB: H*0.36, slotB: H*0.44, boardF: H*0.84, edgeB: H*0.88, s: Math.max(4.5, W/62) }; }   // s: px per bee-body unit (~13 mm bee ≈ 3.8 units)
 function entBg(g, G){
@@ -2669,9 +2710,28 @@ function entSpawnOut(G){
   ENT.bees.push({ mode:'walkout', kind:k.kind, x, y:G.wallB - 6, tx: x + (Math.random()-0.5)*30, ty: G.slotB + (0.3+Math.random()*0.65)*(G.boardF-G.slotB),
     a: Math.PI/2, t:0, seed:(Math.random()*1e6)|0, dust:0 });
 }
+function entSpawnEvict(G){
+  const x = 14 + Math.random()*(G.W-28), ty = G.slotB + (0.55+Math.random()*0.35)*(G.boardF-G.slotB);
+  const d = { mode:'dragged', kind:'d', x, y:G.wallB-14, a:Math.PI/2, seed:(Math.random()*1e6)|0, dust:0 };
+  const w = { mode:'drag', kind:'w', x, y:G.wallB-14+G.s*2.6, a:-Math.PI/2, ty, pair:d, seed:(Math.random()*1e6)|0, dust:0 };
+  d.pair = w; ENT.bees.push(d, w);
+}
 function bez(p0,p1,p2,t){ const u=1-t; return [u*u*p0[0]+2*u*t*p1[0]+t*t*p2[0], u*u*p0[1]+2*u*t*p1[1]+t*t*p2[1]]; }
 function entStep(b, dt, G){
   const walk = G.s*5;     // a few cm per second
+  if (b.mode==='drag'){        // walking backwards out of the slot, gripping the drone, then shoving him off the board
+    const d = b.pair; b.y += walk*0.35*dt; b.a = -Math.PI/2 + Math.sin(performance.now()/90 + b.seed)*0.12;
+    if (d){ d.x = b.x + Math.sin(performance.now()/130 + d.seed)*1.2; d.y = b.y - G.s*2.6; d.a = Math.PI/2 + Math.sin(performance.now()/110 + d.seed)*0.25; }
+    if (b.y >= b.ty){ if (d){ d.mode='shoved'; d.vy = walk*0.9; d.pair=null; } b.pair=null; b.mode='turn'; b.t=0.5; }
+    return;
+  }
+  if (b.mode==='turn'){ b.t-=dt; turnTo(b, -Math.PI/2, 2, dt); if (b.t<=0) b.mode='walkin'; return; }
+  if (b.mode==='dragged') return;
+  if (b.mode==='shoved'){      // pushed over the front edge of the landing board, he drops into the grass below
+    if (b.y < G.boardF + 2){ b.y += b.vy*dt; b.a += Math.sin(performance.now()/80)*0.05; }
+    else { b.vy += 300*dt; b.y += b.vy*dt; b.a += dt*6; if (b.y > G.H + 20) b.gone = true; }
+    return;
+  }
   if (b.mode==='in'){
     b.t += dt/b.dur; const e = 1-Math.pow(1-Math.min(1,b.t),2);          // decelerating approach
     const [nx,ny] = bez(b.p0,b.p1,b.p2,e); if (Math.hypot(nx-b.x,ny-b.y)>0.01) b.a = Math.atan2(ny-b.y, nx-b.x); b.x=nx; b.y=ny;
@@ -2695,6 +2755,15 @@ function drawEntrance(dt){
   ENT.accIn = Math.min(ENT.accIn, 20); ENT.accOut = Math.min(ENT.accOut, 20);
   while (ENT.accIn >= 1){ ENT.accIn--; entSpawnIn(G); }
   while (ENT.accOut >= 1){ ENT.accOut--; entSpawnOut(G); }
+  // drone eviction: the simulation's eviction rate (drones per simulated second) × speed, capped so it stays readable
+  const evRate = hive.evictDrones ? hive.nDrones*0.012/3600*sp*VIEW : 0;
+  ENT.evScale = Math.max(1, evRate/0.6);
+  if (sp>0) ENT.accEv = Math.min(3, ENT.accEv + evRate/ENT.evScale*dt);
+  while (ENT.accEv >= 1){ ENT.accEv--; entSpawnEvict(G); }
+  // a few evicted drones linger on the board, trying to get back in; guards turn them away
+  const nOut = hive.evictDrones && hive.Tout > 8 && hive.nDrones > 20 ? Math.min(3, 1 + Math.round(hive.nDrones/600)) : 0;
+  while (ENT.outcasts.length < nOut){ ENT.outcasts.push({ x: 12+Math.random()*(G.W-24), y: G.boardF-6-Math.random()*10, a: -Math.PI/2+(Math.random()-0.5), t: Math.random()*3, seed:(Math.random()*1e6)|0 }); }
+  while (ENT.outcasts.length > nOut){ const o = ENT.outcasts.pop(); ENT.bees.push({ mode:'shoved', kind:'d', x:o.x, y:o.y, a:o.a, vy: G.s*3, seed:o.seed, dust:0 }); }
   // guards stand just outside the slot facing out; more of them when nectar is scarce (robbing pressure)
   const nG = hive.isDay && hive.Tout > 8 ? Math.min(7, Math.round(2 + (hive.roles.guards||0)/900 + (hive.nectar24 < 200e3 && hive.canFly ? 2 : 0))) : 0;
   while (ENT.guards.length < nG) ENT.guards.push({ x: 12+Math.random()*(G.W-24), y: G.slotB+4+Math.random()*10, a: Math.PI/2 + (Math.random()-0.5)*0.8, ph: Math.random()*6, seed:(Math.random()*1e6)|0 });
@@ -2711,6 +2780,12 @@ function drawEntrance(dt){
   const beard = hive.Tout > 29 && hive.nWorkers > 30000 && hive.hour >= 16 ? Math.min(1, (hive.Tout-29)/4) : 0;
   const s = G.s, now = performance.now()/1000;
   for (const f of ENT.fanners){ drawBee(g, f.x, f.y, f.a, s, 'w', { buzz:true, seed:f.seed }); }
+  for (const o of ENT.outcasts){   // crawl toward the slot, get rebuffed, wander back to the edge
+    o.t -= dt; const toSlot = o.t > 0;
+    const ty = toSlot ? G.slotB + 10 : G.boardF - 5, dy = ty - o.y;
+    if (Math.abs(dy) > 1){ turnTo(o, dy<0 ? -Math.PI/2 : Math.PI/2, 2, dt); o.y += Math.sign(dy)*G.s*1.2*dt; o.x += Math.sin(performance.now()/700 + o.seed)*G.s*0.4*dt; }
+    else if (!toSlot && o.t < -2) o.t = 2 + Math.random()*3;
+    drawBee(g, o.x, o.y, o.a, s*1.05, 'd', { seed:o.seed }); }
   for (const q of ENT.guards){ q.ph += dt; const jit = Math.sin(q.ph*1.7)*0.15; drawBee(g, q.x + Math.sin(q.ph*0.6)*1.5, q.y, q.a+jit, s, 'w', { seed:q.seed }); }
   // walkers & flyers (walkers first so flyers pass over them)
   for (const b of ENT.bees) entStep(b, dt, G);
@@ -2748,6 +2823,7 @@ function updateEntInfo(){
   else if (!hive.canFly && hive.outCount()===0) msg = `Too cold to fly (${hive.Tout.toFixed(0)} °C).${hive.Tout<10?' The colony is clustered inside.':''}`;
   else msg = `<b>${fmt(inM)}</b> bees landing and <b>${fmt(outM)}</b> taking off per minute (whole entrance, simulated time)`
     + (ENT.scale>1.05 ? ` · at this speed each bee drawn stands for ~${fmt(ENT.scale)}` : sp===1 ? ' · shown in real time' : '');
+  if (hive.evictDrones && hive.nDrones > 0) msg = `<span class="warn">Drone eviction:</span> workers are dragging ~${fmt(hive.nDrones*0.012)} drones an hour out of the hive. ` + msg;
   el.innerHTML = msg;
 }
 
@@ -2896,7 +2972,7 @@ function newColony(startDoy){
   window._loading = true; $('loading').style.display='flex';
   const target = startDoy, seed = (Math.random()*1e9)|0;
   hive = new Hive({ seed, startDoy: 59, allowSwarm: $('tSwarm').checked });
-  bees.reset(); ENT.bees=[]; ENT.guards=[]; ENT.fanners=[]; ENT.orient=[]; particles=[]; landKey=''; simAcc=0; window._dca=null; for (const kk in swarmAnim) delete swarmAnim[kk];
+  bees.reset(); ENT.bees=[]; ENT.outcasts=[]; ENT.accEv=0; ENT.guards=[]; ENT.fanners=[]; ENT.orient=[]; particles=[]; landKey=''; simAcc=0; window._dca=null; for (const kk in swarmAnim) delete swarmAnim[kk];
   const days = target-59;
   const step = () => {
     const t0=performance.now();

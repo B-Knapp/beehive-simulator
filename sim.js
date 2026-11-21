@@ -222,7 +222,7 @@ class Hive {
     this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
     this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
-    this.idleDays = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
+    this.idleDays = 0; this.evictN = 0; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
     this.history = []; this.resetDay();
@@ -498,7 +498,8 @@ class Hive {
       } else {
         if (!initial) {
           this.wear[i] += 1 / 40 / 24;
-          if (this.wear[i] >= 1 || (evict && R() < 0.012) || R() < 0.0004) { this.killBee(i); continue; }
+          if (evict && R() < 0.012) { this.killBee(i); this.evictN++; continue; }   // dragged out of the hive by workers
+          if (this.wear[i] >= 1 || R() < 0.0004) { this.killBee(i); continue; }
           if (droneFly && a >= 12) { droneFlying++; if (R() < 0.012) { this.killBee(i); continue; } }
         }
         if (a >= 12) matureDrones++;
