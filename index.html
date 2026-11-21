@@ -1623,7 +1623,7 @@ function renderComb(){
   if (prevComb.side===side && prevComb.st){
     // bees chew out at different moments through the hour: each gets her own time, and her cap stays on until then
     const tNow = hive.t + simAcc;
-    for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push({ k, at: tNow + Math.random(), drone: hive.caste[base+k]===1 });
+    for (let k=0;k<CPS;k++) if (prevComb.st[k]===4 && hive.st[base+k]!==4) bees.emerging.push({ k, at: tNow + 0.5 + Math.random(), drone: hive.caste[base+k]===1, ang: Math.random()*6.28 });
   }
   prevComb.side = side; prevComb.st = hive.st.slice(base, base+CPS);
   const st=hive.st, rr = R*0.86, detail = R >= 4.2, hi = R >= 9, cavity = CS.cavity[Math.min(box,2)];
@@ -1762,6 +1762,10 @@ const GRAD = {};
 function stripes(ctx, kind){
   const key = kind; if (GRAD[key]) return GRAD[key];
   const g = ctx.createLinearGradient(-2.6,0,0.2,0);
+  if (kind==='wp' || kind==='wm'){   // newly emerged: silvery-grey, the bands only faintly marked; darkens over the first day(s)
+    const f = kind==='wp' ? 0.72 : 0.38;
+    [[0,'#2a1a0a'],[.14,'#2a1a0a'],[.2,'#d9a03a'],[.34,'#d9a03a'],[.4,'#2f1d0b'],[.5,'#2f1d0b'],[.56,'#e0aa45'],[.72,'#e0aa45'],[.78,'#3a250f'],[.86,'#3a250f'],[.9,'#d2983a'],[1,'#d2983a']].forEach(([o,c])=>g.addColorStop(o, mixC(c, '#d6cfc2', f)));
+    GRAD[key]=g; return g; }
   if (kind==='d'){ [[0,'#2b1c0c'],[.16,'#2b1c0c'],[.2,'#8a5a22'],[.34,'#8a5a22'],[.38,'#2b1c0c'],[.5,'#2b1c0c'],[.54,'#946226'],[.7,'#946226'],[.74,'#3a260f'],[1,'#3a260f']].forEach(([o,c])=>g.addColorStop(o,c)); }
   else if (kind==='q'){ [[0,'#3a2410'],[.12,'#3a2410'],[.18,'#c0782a'],[.38,'#c0782a'],[.42,'#4a2e12'],[.5,'#4a2e12'],[.55,'#c98a36'],[.78,'#c98a36'],[.82,'#5a3a18'],[1,'#5a3a18']].forEach(([o,c])=>g.addColorStop(o,c)); }
   else { [[0,'#2a1a0a'],[.14,'#2a1a0a'],[.2,'#d9a03a'],[.34,'#d9a03a'],[.4,'#2f1d0b'],[.5,'#2f1d0b'],[.56,'#e0aa45'],[.72,'#e0aa45'],[.78,'#3a250f'],[.86,'#3a250f'],[.9,'#d2983a'],[1,'#d2983a']].forEach(([o,c])=>g.addColorStop(o,c)); }
@@ -1873,7 +1877,8 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
   }
   // abdomen
   const ax = Q ? -1.55 : -1.1, arx = Q ? 1.65 : Dr ? 1.35 : 1.18, ary = Dr ? 0.88 : Q ? 0.62 : 0.66;
-  ctx.fillStyle = stripes(ctx, kind);
+  const pale = (!Q && !Dr && opt.pale > 0.05) ? opt.pale : 0;
+  ctx.fillStyle = stripes(ctx, pale ? (pale > 0.55 ? 'wp' : 'wm') : kind);
   ctx.beginPath(); ctx.ellipse(ax, 0, arx, ary, 0, 0, 7); ctx.fill();
   if (detail){ ctx.fillStyle='rgba(255,240,200,.18)'; ctx.beginPath(); ctx.ellipse(ax+0.1,-ary*0.35,arx*0.75,ary*0.3,0,0,7); ctx.fill(); }
   if (opt.pollen){   // packed pollen loads in the corbiculae ("pollen baskets") of the hind legs
@@ -1888,12 +1893,12 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
     }
   }
 
-  // thorax
-  ctx.fillStyle = Dr ? '#4a331a' : '#5a3c1c';
+  // thorax (a new bee's is covered in fluffy, silvery hair)
+  ctx.fillStyle = Dr ? '#4a331a' : pale ? mixC('#5a3c1c','#d8d2c8',pale) : '#5a3c1c';
   ctx.beginPath(); ctx.ellipse(0.3,0,0.62,0.56,0,0,7); ctx.fill();
-  ctx.fillStyle='rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3,0,0.5,0.44,0,0,7); ctx.fill();
+  ctx.fillStyle = pale ? `rgba(245,242,236,${0.4+0.5*pale})` : 'rgba(205,155,85,.55)'; ctx.beginPath(); ctx.ellipse(0.3,0,0.5,0.44,0,0,7); ctx.fill();
   // head + compound eyes
-  ctx.fillStyle='#2e1f10'; ctx.beginPath(); ctx.ellipse(1.12,0,0.34,0.42,0,0,7); ctx.fill();
+  ctx.fillStyle = pale ? mixC('#2e1f10','#6a5a48',pale) : '#2e1f10'; ctx.beginPath(); ctx.ellipse(1.12,0,0.34,0.42,0,0,7); ctx.fill();
   ctx.fillStyle='#120d08';
   if (Dr){ ctx.beginPath(); ctx.ellipse(1.06,0.24,0.36,0.27,0.3,0,7); ctx.ellipse(1.06,-0.24,0.36,0.27,-0.3,0,7); ctx.fill(); }
   else { ctx.beginPath(); ctx.ellipse(1.08,0.3,0.22,0.13,0.2,0,7); ctx.ellipse(1.08,-0.3,0.22,0.13,-0.2,0,7); ctx.fill(); }
@@ -1912,8 +1917,8 @@ function drawBee(ctx, x, y, ang, s, kind, opt){
     ctx.globalAlpha = 1;
   }
   // wings, folded flat over the abdomen; blurred & raised while waggling
-  const wl = Q ? 1.05 : Dr ? 1.55 : 1.2, buzz = opt.buzz;
-  ctx.fillStyle = buzz ? 'rgba(230,238,255,.16)' : 'rgba(225,234,250,.30)';
+  const wl = (Q ? 1.05 : Dr ? 1.55 : 1.2) * (pale > 0.55 ? 0.8 : 1), buzz = opt.buzz;   // just-emerged wings are still crumpled
+  ctx.fillStyle = buzz ? 'rgba(230,238,255,.16)' : pale > 0.55 ? 'rgba(244,246,251,.55)' : 'rgba(225,234,250,.30)';
   ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.06;
   for (const sg of [1,-1]){
     const rot = sg*(buzz ? 0.55 : 0.12);
@@ -2083,7 +2088,7 @@ function updateBees(dt){
     if (Math.random() > 1/bees.scale) continue;
     const [x,y] = bees.cellPos(e.k);
     // she climbs out of the cell head first, then wanders off to her first job: cleaning cells
-    const b = newSprite(e.drone?'d':'w'); b.x=x; b.y=y; b.role=e.drone?'drone':'cleaner'; b.mode='work'; b.t=2+Math.random()*3; b.a=Math.random()*6.28;
+    const b = newSprite(e.drone?'d':'w'); b.x=x+Math.cos(e.ang)*1.5; b.y=y+Math.sin(e.ang)*1.5; b.role=e.drone?'drone':'cleaner'; b.mode='rest'; b.t=2+Math.random()*3; b.a=e.ang; b.born=tSim;
     bees.list.push(b); if (e.drone) cd++; else cw++;
   }
   // steady traffic of foragers coming home through the entrance below the bottom box
@@ -2316,15 +2321,42 @@ function drawComb(){
   cx.setTransform(dpr,0,0,dpr,0,0);
   const sc = R;
   const role = colorRoles;
-  if (bees.emerging.length){ const rr=R*0.86;
-    for (const e of bees.emerging){ const [ex,ey]=bees.cellPos(e.k), x=ox+ex*R, y=oy+ey*R; if (x<-R*2||x>W+R*2||y<-R*2||y>H+R*2) continue;
-      cx.fillStyle = e.drone ? COMB_STYLE.dcap : COMB_STYLE.wcap; cx.beginPath(); hexPath(cx,x,y,rr*0.98); cx.fill();
-      if (R>=4.2){ cx.fillStyle = shade(e.drone?COMB_STYLE.dcap:COMB_STYLE.wcap, 1.15); cx.beginPath(); cx.ellipse(x-R*0.12,y-R*0.15,rr*0.6,rr*0.56,0,0,7); cx.fill();
-        const left = e.at - (hive.t+simAcc); if (left < 0.12){ cx.fillStyle='rgba(40,25,10,.7)'; cx.beginPath(); cx.arc(x,y,rr*0.55*(1-left/0.12),0,7); cx.fill(); } } } }   // chewing through the cap
+  if (bees.emerging.length){ const rr=R*0.86, tS=hive.t+simAcc;
+    const late = [];
+    for (const e of bees.emerging){ const [ex,ey]=bees.cellPos(e.k), x=ox+ex*R, y=oy+ey*R; if (x<-R*4||x>W+R*4||y<-R*4||y>H+R*4) continue;
+      const capC = e.drone ? COMB_STYLE.dcap : COMB_STYLE.wcap, left = e.at - tS;
+      cx.fillStyle = capC; cx.beginPath(); hexPath(cx,x,y,rr*0.98); cx.fill();
+      if (R>=4.2 && left > 0.3){ cx.fillStyle = shade(capC, 1.15); cx.beginPath(); cx.ellipse(x-R*0.12,y-R*0.15,rr*0.6,rr*0.56,0,0,7); cx.fill(); }
+      if (left > 0.5) continue;
+      // 1 · a small hole in the middle of the cap, widening as she chews (0.5 → 0.3 h before she is out)
+      // 2 · her head and antennae show through (0.3 → 0.15 h)   3 · she climbs out at an angle (last 0.15 h)
+      const holeR = left > 0.3 ? rr*(0.12 + 0.45*(0.5-left)/0.2) : left > 0.15 ? rr*(0.57 + 0.2*(0.3-left)/0.15) : rr*0.84;
+      cx.fillStyle='#140d06'; cx.beginPath(); for (let a=0;a<6.3;a+=0.45){ const r2=holeR*(0.93+0.07*hsh(e.k+a*10)); const px=x+Math.cos(a)*r2, py=y+Math.sin(a)*r2; a===0?cx.moveTo(px,py):cx.lineTo(px,py); } cx.closePath(); cx.fill();
+      if (left <= 0.3 && left > 0.15 && R >= 2.5){
+        const a = e.ang, wig = Math.sin(performance.now()/1000*5 + e.k)*0.35;
+        cx.save(); cx.translate(x,y); cx.rotate(a); cx.scale(R,R);
+        cx.strokeStyle='#4a3a2a'; cx.lineWidth=0.09; cx.lineCap='round'; cx.beginPath();
+        cx.moveTo(0.2,-0.15); cx.quadraticCurveTo(0.75,-0.45-wig*0.3,1.15,-0.5+wig*0.5);
+        cx.moveTo(0.2,0.15); cx.quadraticCurveTo(0.75,0.45+wig*0.3,1.1,0.55-wig*0.4); cx.stroke();          // antennae waving
+        cx.fillStyle='#8a7a66'; cx.beginPath(); cx.ellipse(0,0,0.4,0.46,0,0,7); cx.fill();                  // pale head
+        cx.fillStyle='rgba(240,236,228,.5)'; cx.beginPath(); cx.ellipse(-0.12,0,0.22,0.3,0,0,7); cx.fill();   // fuzz
+        cx.fillStyle='#2a2018'; cx.beginPath(); cx.ellipse(-0.02,0.26,0.18,0.11,0,0,7); cx.ellipse(-0.02,-0.26,0.18,0.11,0,0,7); cx.fill();
+        cx.restore();
+      } else if (left <= 0.15) late.push([e, x, y, left]);
+    }
+    // she hauls herself out at an angle, front and middle legs on the comb; the rest of her is still down in the cell
+    for (const [e, x, y, left] of late){
+      const p = 1 - Math.max(0, left)/0.15, a = e.ang, off = (0.2 + 1.0*p)*R, holeR = rr*0.84;
+      const bx = x + Math.cos(a)*off, by = y + Math.sin(a)*off;
+      drawBee(cx, bx, by, a + Math.sin(p*9 + e.k)*0.12, R, e.drone?'d':'w', { pale: 1, seed: e.k });
+      cx.save(); cx.beginPath(); cx.arc(x, y, holeR, 0, 7); cx.clip();            // the part still inside the cell is in shadow
+      cx.translate(x, y); cx.rotate(a); cx.fillStyle='rgba(20,12,5,.62)'; cx.fillRect(-holeR*1.2, -holeR*1.2, holeR*1.2 + off - R*0.45, holeR*2.4); cx.restore();
+    }
+  }
   for (const b of bees.list){
     const x = ox + b.x*R, y = oy + b.y*R; if (x<-20||y<-20||x>W+20||y>H+20) continue;
     if (b.side){ const dx=b.tx-b.x, dy=b.ty-b.y; drawBeeSide(cx, x, y, dx>=0?1:-1, sc, b.kind, { fly:b.buzz, pitch: b.buzz ? Math.max(-0.5, Math.min(0.5, Math.atan2(dy, Math.abs(dx)+1e-6))) : 0, step:b.wob, pollen:b.pollen, load:b.load, dust:b.dust||0, dustCol:b.dustCol, seed:b.seed, role: role ? ROLE_COL[b.role] : null }); continue; }
-    drawBee(cx, x, y, b.a, sc, b.kind, { buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
+    drawBee(cx, x, y, b.a, sc, b.kind, { pale: b.born!=null ? Math.max(0, 1-(hive.t+simAcc-b.born)/24) : 0, buzz:b.buzz, foreshort: b.mode==='work', pollen: b.pollen, load: b.load, dust: b.dust||0, dustCol: b.dustCol, seed: b.seed, role: role ? ROLE_COL[b.role] : null });
   }
   if (bees.queen){ const q=bees.queen; drawBee(cx, ox+q.x*R, oy+q.y*R, q.a, sc, 'q', { foreshort: q.mode==='lay', role: role?ROLE_COL.queen:null });
     if (R>3){ cx.strokeStyle='rgba(232,156,255,.55)'; cx.lineWidth=1.5; cx.beginPath(); cx.arc(ox+q.x*R, oy+q.y*R, R*3.6, 0, 7); cx.stroke(); } }
