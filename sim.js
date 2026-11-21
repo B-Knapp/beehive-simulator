@@ -32,7 +32,8 @@ const NBR = (() => {
 })();
 // candidate nest cavities a swarm might choose (Seeley: ideal ≈ 40 L, small entrance near the bottom, several metres up, south-facing)
 const SITE_TYPES = ['Hollow oak', 'Hollow beech', 'Hollow ash', 'Old bee box', 'Wall cavity', 'Chimney', 'Barn roof void', 'Hollow willow', 'Church tower', 'Hollow maple', 'Shed floor void', 'Woodpecker-enlarged hollow'];
-const MONTH_LAY = [0.05, 0.18, 0.42, 0.75, 1.0, 0.95, 0.78, 0.55, 0.33, 0.12, 0.01, 0.0]; // seasonal egg-laying drive (mid-month)
+// seasonal egg-laying drive (mid-month); brood falls steeply after midsummer (Liebefeld data: Aug ≈ half the June peak, Oct ≈ 5%)
+const MONTH_LAY = [0.05, 0.18, 0.42, 0.75, 1.0, 0.95, 0.72, 0.45, 0.24, 0.07, 0.01, 0.0];
 
 // Forage plants (temperate ~45°N).  bloom = day-of-year window; nectar/pollen = peak supply to this colony (mg/h)
 const FLORA = [
@@ -604,7 +605,8 @@ class Hive {
     const homeW = this.nWorkers - this.outCount();
     // a wintering colony burns ~20–25 kg of honey from October to March (Seeley & Visscher 1985): ≈0.3 mg sugar per bee
     // per hour in the cluster at 0 °C, more the colder it gets
-    let perBee = clustered ? 0.12 + 0.012 * (15 - T) : 0.3;
+    // a cluster loses heat through its surface, so big clusters burn less per bee (Southwick 1985): ∝ N^(-1/3)
+    let perBee = clustered ? (0.12 + 0.012 * (15 - T)) * Math.pow(20000 / Math.max(2000, homeW), 1 / 3) : 0.3;
     let sugarNeed = homeW * perBee + this.nDrones * 1.0
       + c.larvae * 0.5 + c.dLarvae * 1.4
       + (brood > 0 && T < 32 ? brood * 0.004 * (34 - T) : 0)
@@ -846,6 +848,8 @@ class Hive {
     if (this.pollenTotal < 80e3 && this.pollenToday < 50e3 && this.doy > 40) res *= 0.4;
     if (this.cnt.sugar < 2e6) res *= 0.4;
     if (this.nectar24 > 1e6) res *= 1.1;
+    // in a late-summer dearth the workers feed the queen less and she slows down
+    else if (this.doy > 180 && this.nectar24 < 150e3) res *= 0.7;
     return max * season * res * (this.swarmPrep ? 0.35 : 1);
   }
   // ---- the queen's walk (Camazine 1991; Montovan et al. 2013 model 3): she moves cell to cell, biased toward the warm
@@ -903,6 +907,16 @@ class Hive {
       else o = nb[(R() * nb.length) | 0];
       i = side * CPS + (r + o[0]) * COLS + (c + o[1]);
       if (++fails > 70) { this.qpos.i = i; this.queenChangeFace(); i = this.qpos.i; fails = 0; }
+    }
+    // if her walk ran out before she found enough cells, she keeps searching the rim of the brood nest — a queen with
+    // empty comb next to her brood lays to her full potential (her walk is a model of where she lays, not a limit on it)
+    for (let t = 0; t < 600 && nw > 0 && this.nBrood > 0; t++) {
+      const b = this.broodList[(R() * this.nBrood) | 0], side = (b / CPS) | 0, k = b - side * CPS;
+      const rr = (k / COLS) | 0, o = NBR[rr & 1][(R() * NBR[rr & 1].length) | 0], r2 = rr + o[0], c2 = (k % COLS) + o[1];
+      if (r2 < 0 || r2 >= ROWS || c2 < 0 || c2 >= COLS) continue;
+      const j = side * CPS + r2 * COLS + c2;
+      if (st[j] !== ST.EMPTY || !this.drawn[j] || this.droneCell[j] || (this.excluder && this.boxOf(j) >= 2) || R() < this.coolPenalty(j)) continue;
+      st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++;
     }
     // drone eggs: she seeks out drone comb at the edge of the brood nest
     for (let t = 0; t < 400 && nd > 0 && !allDrone && this.nBrood > 0; t++) {

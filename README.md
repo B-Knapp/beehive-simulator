@@ -14,7 +14,7 @@ An agent-based honey bee (*Apis mellifera*) colony simulation that runs in the b
 - Swarm house-hunting (Seeley): scouts, dance support that fades with each trip, quorum sensing at candidate cavities, and the flight to the chosen site
 - Overwintering: brood-free winter bees stay physiologically young and long-lived; brood rearing restarts after the solstice on a warmth threshold that falls as days lengthen (Nürnberger et al. 2018); ~20 kg of honey burned over winter
 - Entrance close-up: landings and take-offs drawn at the colony's real flight rate × simulation speed, plus guards, fanners, orientation flights and bearding
-- Hive-weight chart (what a hive scale would read), checked against published ranges for pollen intake, winter consumption, peak population and laying rate
+- Hive-weight chart (what a hive scale would read), checked against published ranges: peak ~40–48k workers, ~1,900 eggs/day, 30–40 kg pollen a year, ~20–25 kg of honey over winter
 - Beekeeper actions: add up to 4 honey supers (taken-off supers keep their drawn comb), take off the top super, harvest, feed, introduce queen
 
 `sim.js` is the standalone simulation engine (also runs headless in Node); `index.html` bundles it with the visual UI.
