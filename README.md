@@ -12,6 +12,6 @@ An agent-based honey bee (*Apis mellifera*) colony simulation that runs in the b
 - Comb layout emerges from local rules (Camazine 1991; Montovan, Karst, Jones & Seeley 2013; Johnson 2009): the queen walks the comb and lays near brood, nectar is stored with a gravity bias, pollen beside the brood, stores next to brood are eaten first, nectar is moved out of the brood nest
 - Queen laying, drone production, swarming (queen cups along the bottom of brood combs), virgin queens that hunt and kill rivals in their cells, queen duels, piping (tooting/quacking), afterswarms, mating flights, supersedure with mother–daughter coexistence, emergency queens, laying workers
 - Swarm house-hunting (Seeley): scouts, dance support that fades with each trip, quorum sensing at candidate cavities, and the flight to the chosen site
-- Beekeeper actions: add super, harvest, feed, introduce queen
+- Beekeeper actions: add up to 4 honey supers (taken-off supers keep their drawn comb), take off the top super, harvest, feed, introduce queen
 
 `sim.js` is the standalone simulation engine (also runs headless in Node); `index.html` bundles it with the visual UI.

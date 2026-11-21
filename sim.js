@@ -4,7 +4,7 @@
 //  Time step: 10 simulated minutes (foraging), hourly (colony), daily (season)
 // ============================================================================
 const COLS = 80, ROWS = 44, CPS = COLS * ROWS;          // one side of a Langstroth deep ≈ 3,500 cells
-const FPB = 10, MAXBOX = 3, SIDES = MAXBOX * FPB * 2, NC = SIDES * CPS;
+const FPB = 10, MAXBOX = 6, SIDES = MAXBOX * FPB * 2, NC = SIDES * CPS;
 const ST = { EMPTY: 0, DIRTY: 1, EGG: 2, LARVA: 3, CAPPED: 4, NECTAR: 5, HONEY: 6, POLLEN: 7, QCELL: 8 };
 // Development times in hours from egg laying: hatch, capping, emergence
 const DEV = [
@@ -104,7 +104,7 @@ class Hive {
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       bk[i] = d + this.hash(i) * 1.5;                           // used only for the initial (post-winter) layout
       hk[i] = -(d + 0.9 * (yUp - cy)) + this.hash(i * 7) * 2;
-      dk[i] = Math.abs(f - 4.5) * 40 + r * 1.0 + Math.abs(c - 39.5) * 0.5 + this.hash(i * 3) * 2;   // comb is drawn from the top bar down, central frames first
+      dk[i] = b * 10000 + Math.abs(f - 4.5) * 40 + r * 1.0 + Math.abs(c - 39.5) * 0.5 + this.hash(i * 3) * 2;   // comb is drawn from the top bar down, central frames first
     }
     const idx = () => { const a = new Int32Array(n); for (let i = 0; i < n; i++) a[i] = i; return a; };
     this.broodOrder = idx().sort((a, b) => bk[a] - bk[b]);
@@ -490,12 +490,13 @@ class Hive {
     const n = this.nActive;
     const BL = this.broodList, FL = this.foodList, PL = this.pollenList, DL = this.dirtyList;
     const FR = this.faceR || (this.faceR = new Float32Array(SIDES)), FC = this.faceC || (this.faceC = new Float32Array(SIDES)); FR.fill(0); FC.fill(0);
-    let nB = 0, nF = 0, nP = 0, nD = 0, sx = 0, sy = 0, sz = 0;
+    let nB = 0, nF = 0, nP = 0, nD = 0, sx = 0, sy = 0, sz = 0, fx = 0, fy = 0, fz = 0, fw = 0;
     for (let i = 0; i < n; i++) {
       const s = st[i];
       const sd = ((i / CPS) | 0) * 8;
       if (s === ST.EMPTY) { if (this.drawn[i]) { c.emptyDrawn++; ss[sd + 4]++; } else { c.undrawn++; ss[sd + 5]++; } continue; }
-      if (s === ST.HONEY) { c.honeySugar += this.sugar[i]; c.sugar += this.sugar[i]; c.honeyCells++; ss[sd + 1]++; FL[nF++] = i; continue; }
+      if (s === ST.HONEY) { c.honeySugar += this.sugar[i]; c.sugar += this.sugar[i]; c.honeyCells++; ss[sd + 1]++; FL[nF++] = i;
+        if ((i & 7) === 0) { const d = this.dist3(i, this.nestC), w = 1 / (1 + d * d / 100); fx += this.X3[i] * w; fy += this.Y3[i] * w; fz += this.Z3[i] * w; fw += w; } continue; }
       if (s === ST.NECTAR) {
         let w = this.water[i]; const sg = this.sugar[i];
         const ex = w - sg * 0.2195;          // excess over 18 % water
@@ -537,6 +538,10 @@ class Hive {
     this.nBrood = nB; this.nFood = nF; this.nPol = nP; this.nDirty = nD;
     // the nest centre follows the brood; with little brood (winter) the cluster stays where it was
     if (nB > 300) { const k = initial ? 1 : 0.1; this.nestC.x += (sx / nB - this.nestC.x) * k; this.nestC.y += (sy / nB - this.nestC.y) * k; this.nestC.z += (sz / nB - this.nestC.z) * k; }
+    else if (fw > 0 && !initial) {   // broodless winter cluster creeps toward (mostly up into) the nearest honey as it eats
+      const k = 0.006; this.nestC.x += (fx / fw - this.nestC.x) * k; this.nestC.y += (fy / fw - this.nestC.y) * k; this.nestC.z += (fz / fw - this.nestC.z) * k;
+      if (this.excluder) this.nestC.y = Math.min(this.nestC.y, 2 * ROWS - 6);   // the cluster stays with the queen below the excluder
+    }
     this.prevLarvae = c.larvae + c.dLarvae * 2.5;
     this.emergedToday += c.emergedW + c.emergedD;
     const brood = c.eggs + c.larvae + c.dLarvae + c.capped + c.dCapped;
@@ -591,7 +596,11 @@ class Hive {
     }
     const storageFree = c.emptyDrawn / Math.max(1, n - c.undrawn);
     // wax builders draw out new comb during a flow once the box below it is mostly stores (or the hive is nearly full)
-    let topFill = 0; if (this.nBoxes === 3) { let st2 = 0, dr2 = 0; for (let sd = 20; sd < 40; sd++) { const o = sd * 8; st2 += ss[o + 1] + ss[o + 2]; dr2 += ss[o] + ss[o + 1] + ss[o + 2] + ss[o + 3] + ss[o + 4] + ss[o + 6]; } topFill = st2 / Math.max(1, dr2); }
+    let topFill = 0;
+    if (this.nBoxes > 2) {
+      let bx = 2; for (; bx < this.nBoxes; bx++) { let u = 0; for (let sd = bx * 20; sd < bx * 20 + 20; sd++) u += ss[sd * 8 + 5]; if (u > 0) break; }
+      if (bx < this.nBoxes) { let st2 = 0, dr2 = 0; for (let sd = (bx - 1) * 20; sd < bx * 20; sd++) { const o = sd * 8; st2 += ss[o + 1] + ss[o + 2]; dr2 += ss[o] + ss[o + 1] + ss[o + 2] + ss[o + 3] + ss[o + 4] + ss[o + 6]; } topFill = st2 / Math.max(1, dr2); }
+    }
     if (c.undrawn > 0 && this.nectar24 > 400e3 && (storageFree < 0.2 || topFill > 0.55) && T > 15) {
       let k = Math.floor((storers + guards * 0.5) * 0.05 + R());
       for (let j = 0; j < n && k > 0; j++) {
@@ -638,7 +647,8 @@ class Hive {
         if (!this.drawn[i] || (s !== ST.EMPTY && s !== ST.NECTAR)) continue;
         const cap = this.droneCell[i] ? VOL_D : VOL_W;
         if (s === ST.NECTAR && cap - (this.sugar[i] / SUGAR_DENS + this.water[i]) < 15) continue;
-        const score = this.Y3[i] + 0.25 * Math.abs(this.X3[i] - P.x) + 0.25 * Math.abs(this.Z3[i] - P.z) + (s === ST.NECTAR ? 10 : 0) + R() * 8;
+        const fill = s === ST.NECTAR ? (this.sugar[i] / SUGAR_DENS + this.water[i]) / cap : 0;
+        const score = this.Y3[i] + 0.25 * Math.abs(this.X3[i] - P.x) + 0.25 * Math.abs(this.Z3[i] - P.z) + (s === ST.NECTAR ? 12 + 30 * fill : 0) + R() * 8;
         if (score > bestScore) { bestScore = score; best = i; }
       }
       if (best < 0) { failed++; continue; }
@@ -659,23 +669,26 @@ class Hive {
   relocateNectar() {
     if (this.nFood === 0) return;
     const R = this.rand, st = this.st, spring = this.doy > 50 && this.doy < 170, n = this.nActive, P = this.nestC;
-    const tries = Math.min(500, this.nFood);
+    const tries = Math.min(1500, this.nFood);
     for (let t = 0; t < tries; t++) {
       const i = this.foodList[(R() * this.nFood) | 0], s = st[i];
       if (s !== ST.NECTAR && s !== ST.HONEY) continue;
       const D = this.broodDensity(i);
-      const thin = s === ST.NECTAR && (this.sugar[i] / SUGAR_DENS + this.water[i]) < (this.droneCell[i] ? VOL_D : VOL_W) * 0.35;
-      if (D < 0.2 && !(thin && R() < 0.15)) continue;    // brood-nest nectar is moved out; thin leftovers are consolidated
+      const fillI = (this.sugar[i] / SUGAR_DENS + this.water[i]) / (this.droneCell[i] ? VOL_D : VOL_W);
+      const thin = s === ST.NECTAR && fillI < 0.6;
+      if (D < 0.2 && !(thin && R() < 0.35)) continue;    // brood-nest nectar is moved out; thin leftovers are consolidated
       if (D >= 0.2 && !((s === ST.NECTAR && R() < 0.3) || (s === ST.HONEY && spring && D > 0.35 && R() < 0.04))) continue;
       // carry it to a higher / outer cell away from the brood
       let best = -1, bestScore = -1e9;
       for (let a = 0; a < 8; a++) {
-        const j = (a & 1 && this.nFood) ? this.foodList[(R() * this.nFood) | 0] : (R() * n) | 0, sj = st[j];
+        const j = (D < 0.2 || (a & 1)) && this.nFood ? this.foodList[(R() * this.nFood) | 0] : (R() * n) | 0, sj = st[j];
         if (j === i) continue;
         if (!this.drawn[j] || (sj !== ST.EMPTY && sj !== ST.NECTAR) || this.Y3[j] < this.Y3[i] - 2) continue;
         const cap = this.droneCell[j] ? VOL_D : VOL_W, vol = sj === ST.NECTAR ? this.sugar[j] / SUGAR_DENS + this.water[j] : 0;
         if (cap - vol < this.sugar[i] / SUGAR_DENS + this.water[i]) continue;
-        const score = this.Y3[j] + 0.25 * Math.abs(this.X3[j] - P.x) + R() * 8;
+        const fillJ = vol / cap;
+        if (D < 0.2 && (sj !== ST.NECTAR || fillJ < fillI)) continue;   // consolidating: only into a fuller nectar cell
+        const score = (D < 0.2 ? fillJ * 40 - Math.abs(this.Y3[j] - this.Y3[i]) : this.Y3[j] + 0.25 * Math.abs(this.X3[j] - P.x)) + R() * 8;
         if (score > bestScore) { bestScore = score; best = j; }
       }
       if (best < 0) continue;
@@ -689,7 +702,7 @@ class Hive {
     const st = this.st, ord = this.broodOrder, n = this.nActive;
     for (let j = start; j < n && amount > 1; j++) {
       const i = ord[j], s = st[i];
-      if (!this.drawn[i] || this.droneCell[i] || this.boxOf(i) === 2) continue;
+      if (!this.drawn[i] || this.droneCell[i] || this.boxOf(i) >= 2) continue;
       if (s === ST.EMPTY || (s === ST.POLLEN && this.pol[i] < POLLEN_CAP_W)) {
         if (s === ST.EMPTY) { st[i] = ST.POLLEN; this.pol[i] = 0; }
         const add = Math.min(POLLEN_CAP_W - this.pol[i], amount);
@@ -719,7 +732,7 @@ class Hive {
             i = side * CPS + r * COLS + cc;
           } else i = (R() * n) | 0;
           const s = st[i];
-          if (!this.drawn[i] || this.droneCell[i] || (this.excluder && this.boxOf(i) === 2)) continue;
+          if (!this.drawn[i] || this.droneCell[i] || (this.excluder && this.boxOf(i) >= 2)) continue;
           let score;
           if (s === ST.POLLEN && this.pol[i] < POLLEN_CAP_W - 1) score = 2 + R();
           else if (s === ST.EMPTY) score = 1 + R();
@@ -740,17 +753,18 @@ class Hive {
   // winter cluster the bees eat from the cells around the cluster.
   takeLoads(list, count, need, chunk, isPollen) {
     const R = this.rand, st = this.st, P = this.nestC;
-    let got = 0, guard = 0;
-    while (need > 0.01 && count > 0 && guard++ < 20000) {
+    let got = 0, guard = 0, misses = 0;
+    while (need > 0.01 && count > 0 && guard++ < 200000) {
       let pick = -1;
       for (let a = 0; a < 6; a++) {
         const i = list[(R() * count) | 0], s = st[i];
         if (isPollen ? s !== ST.POLLEN : (s !== ST.HONEY && s !== ST.NECTAR)) continue;
         if (!isPollen && s === ST.HONEY && a < 5 && R() < 0.85) continue;   // prefer cells already opened
         const D = this.broodDensity(i), near = Math.exp(-this.dist3(i, P) / 18);
-        if (a === 5 || R() < (1 + 9 * D) / 10 * (0.25 + 0.75 * near)) { pick = i; break; }
+        if (misses > 15 || R() < (1 + 9 * D) / 10 * (0.08 + 0.92 * near)) { pick = i; break; }
       }
-      if (pick < 0) continue;
+      if (pick < 0) { misses++; continue; }
+      misses = 0;
       const i = pick;
       if (isPollen) {
         const m = Math.min(this.pol[i], need, chunk); this.pol[i] -= m; got += m; need -= m;
@@ -803,7 +817,7 @@ class Hive {
   queenChangeFace() {
     const R = this.rand, cur = this.sideOf(this.qpos.i), b = (cur / 20) | 0, f = ((cur % 20) / 2) | 0, sd = cur & 1;
     const cand = [];
-    const add = (bb, ff, ss) => { if (bb < 0 || bb >= this.nBoxes || ff < 0 || ff >= FPB) return; if (this.excluder && bb === 2) return; cand.push((bb * 10 + ff) * 2 + ss); };
+    const add = (bb, ff, ss) => { if (bb < 0 || bb >= this.nBoxes || ff < 0 || ff >= FPB) return; if (this.excluder && bb >= 2) return; cand.push((bb * 10 + ff) * 2 + ss); };
     add(b, f, sd ^ 1);                                   // other face of the same comb
     if (sd === 0) add(b, f - 1, 1); else add(b, f + 1, 0); // facing comb across the bee space
     add(b + 1, f, sd); add(b - 1, f, sd);                // through the gap between boxes
@@ -833,7 +847,7 @@ class Hive {
       const start = (R() * nb.length) | 0;
       for (let q = 0; q < nb.length && !laidHere; q++) {
         const o2 = nb[(start + q) % nb.length], j = side * CPS + (r + o2[0]) * COLS + (c + o2[1]);
-        if (st[j] !== ST.EMPTY || !this.drawn[j] || (this.excluder && this.boxOf(j) === 2)) continue;
+        if (st[j] !== ST.EMPTY || !this.drawn[j] || (this.excluder && this.boxOf(j) >= 2)) continue;
         if (!(this.nBrood < 50 || this.sideStats[side * 8] < 20 || this.hasBroodNear(j))) continue;
         if (this.droneCell[j] || allDrone) { if (nd > 0) { st[j] = ST.EGG; this.caste[j] = 1; this.age[j] = 0; nd--; laid++; laidHere = true; i = j; } }
         else if (nw > 0) { st[j] = ST.EGG; this.caste[j] = 0; this.age[j] = 0; nw--; laid++; laidHere = true; i = j; }
@@ -1113,7 +1127,7 @@ class Hive {
     if (this.queen.present === false || this.queen.virgin || this.virgins.length) this.evictDrones = false;
     if (this.evictDrones && !wasEvict && this.nDrones > 50) this.say('Workers are evicting the drones from the hive.', 'info');
     if (doy === 172) this.say('Summer solstice — the colony is near peak population.', 'info');
-    if (doy === 102 && this.nBoxes < 3) this.say('The spring nectar flow is starting — a beekeeper would add a honey super now, or the brood nest will fill with honey.', 'keeper');
+    if (doy === 102 && this.nBoxes <= 2) this.say('The spring nectar flow is starting — a beekeeper would add a honey super now, or the brood nest will fill with honey.', 'keeper');
     // swarm impulse check
     const Q = this.queen;
     const congested = this.congest.length >= 3 && Math.max(...this.congest) < 0.85;
@@ -1139,15 +1153,33 @@ class Hive {
 
   // ---------------------------------------------------------------- beekeeper actions
   addSuper() {
-    if (this.nBoxes >= 3) return 'Already has a super.';
-    this.nBoxes = 3; this.excluder = true; this.buildOrders();
-    this.say('Beekeeper added a honey super (foundation, above a queen excluder).', 'keeper'); return 'ok';
+    if (this.nBoxes >= MAXBOX) return 'The hive already has the maximum of ' + (MAXBOX - 2) + ' supers.';
+    const b = this.nBoxes, drawn = this.drawn[b * 20 * CPS] === 1;
+    this.nBoxes++; this.excluder = true; this.buildOrders();
+    // fresh frame summaries for the new box so it shows straight away
+    for (let sd = b * 20; sd < b * 20 + 20; sd++) { const o = sd * 8; for (let q = 0; q < 8; q++) this.sideStats[o + q] = 0;
+      for (let i = sd * CPS; i < (sd + 1) * CPS; i++) { if (!this.drawn[i]) this.sideStats[o + 5]++; else this.sideStats[o + 4]++; } }
+    this.say(`Beekeeper added honey super ${b - 1} (${drawn ? 'drawn comb from storage' : 'foundation'}${b === 2 ? ', above a queen excluder' : ''}).`, 'keeper'); return 'ok';
+  }
+  removeSuper() {
+    if (this.nBoxes <= 2) return 'No supers to remove.';
+    const b = this.nBoxes - 1, lo = b * 20 * CPS, hi = lo + 20 * CPS;
+    let honey = 0, nectar = 0;
+    for (let i = lo; i < hi; i++) {
+      const s = this.st[i];
+      if (s === ST.HONEY) honey += this.sugar[i] / 0.82; else if (s === ST.NECTAR) nectar += this.sugar[i] + this.water[i];
+      this.st[i] = ST.EMPTY; this.sugar[i] = 0; this.water[i] = 0; this.pol[i] = 0;   // drawn comb is kept for next time
+    }
+    this.nBoxes--; if (this.nBoxes <= 2) this.excluder = false; this.buildOrders();
+    this.totalHarvest = (this.totalHarvest || 0) + honey;
+    this.say(`Beekeeper took off super ${b - 1}: ${(honey / 1e6).toFixed(1)} kg of capped honey extracted` + (nectar > 1e5 ? `, ${(nectar / 1e6).toFixed(1)} kg of unripe nectar lost (too wet to keep — it would ferment)` : '') + '. The drawn comb goes into storage.', 'keeper');
+    return 'ok';
   }
   harvest() {
     let got = 0; const n = this.nActive;
     const total = () => { let s = 0; for (let i = 0; i < n; i++) if (this.st[i] === ST.HONEY || this.st[i] === ST.NECTAR) s += this.sugar[i]; return s / 0.82; };
     let keep = 20e6, have = total();
-    for (const box of [2, 1]) {
+    for (let box = this.nBoxes - 1; box >= 1; box--) {
       for (let i = box * 20 * CPS; i < (box + 1) * 20 * CPS && i < n; i++) {
         if (this.st[i] !== ST.HONEY) continue;
         const m = this.sugar[i] / 0.82;
