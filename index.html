@@ -101,6 +101,8 @@ select{background:var(--panel2);color:var(--text);border:1px solid var(--line);b
         <button id="bQueen">Introduce queen</button>
       </div>
       <label class="tg"><input type="checkbox" id="tSwarm" checked> Natural swarming</label>
+      <label class="tg" title="A beekeeper who looks after the hive as a careful hobbyist would: inspects weekly in swarm season and every two weeks in late summer (on warm, dry days), adds supers before they run out of room, knocks down swarm cells and splits the colony if they come back, harvests capped honey from the supers, takes the supers off in autumn and feeds syrup or fondant when stores are light"><input type="checkbox" id="tKeeper"> Call Graeme <span class="sub">(beekeeper looks after the hive)</span></label>
+      <div id="keeperInfo" class="sub" style="height:1.4em;overflow:hidden"></div>
       <label class="tg"><input type="checkbox" id="tRole"> Colour bees by job</label>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span class="sub">New colony starting</span>
@@ -477,6 +479,7 @@ class Hive {
     if (nowH !== prevH) {
       const d = Math.floor(nowH / 24);
       if (d !== this.day) this.daily(d);
+      if (this.keeper && nowH % 24 === 11 && this.nWorkers > 300) this.graeme(this.day % 365);   // the beekeeper visits late morning
       this.hourly(false);
     }
   }
@@ -1372,6 +1375,104 @@ class Hive {
     if (doy > 270 && this.wx.mean < 8 && this.clusterYear !== this.year) { this.say('Cold weather — bees are forming a winter cluster.', 'info'); this.clusterYear = this.year; }
     if (this.nWorkers < 300 && !this.deadMsg) { this.deadMsg = true; this.say('The colony has collapsed.', 'bad'); }
   }
+
+  // ---- "Call Graeme": a beekeeper who manages the hive the way a careful hobbyist in a temperate climate would.
+  // He opens the hive every 7 days in swarm season and every 14 days in late summer, only on warm, dry days; from late
+  // autumn to early spring he just hefts the hive (checks its weight) and feeds if it's light.
+  boxStores(b) {   // honey & nectar in one box: kg of capped honey, kg of unripe nectar, fraction of drawn cells used for stores
+    let h = 0, n = 0, used = 0, drawn = 0;
+    for (let i = b * 20 * CPS; i < (b + 1) * 20 * CPS; i++) { if (!this.drawn[i]) continue; drawn++; const st = this.st[i];
+      if (st === ST.HONEY) { h += this.sugar[i] / 0.82; used++; } else if (st === ST.NECTAR) { n += this.sugar[i] + this.water[i]; used++; } }
+    return { honey: h / 1e6, nectar: n / 1e6, fill: drawn ? used / drawn : 0, drawn: drawn / (20 * CPS) };
+  }
+  graeme(doy) {
+    const G = (msg, kind) => this.say('Graeme: ' + msg, kind || 'keeper');
+    const honeyKg = () => (this.cnt ? this.cnt.sugar : 0) / 0.82 / 1e6;
+    const season = doy >= 90 && doy < 200 ? 7 : doy >= 200 && doy < 290 ? 14 : 0;
+    // winter and early spring: heft the hive every couple of weeks; feed fondant (cold) or syrup (spring) if light
+    const heft = (every) => {   // lift the back of the hive to judge its weight, without opening it
+      if (this.day < (this.keeperHeft || 0)) return; this.keeperHeft = this.day + every;
+      const hk = honeyKg();
+      if (hk < 8 && this.feeder < 1e6) {
+        if (this.wx.mean < 10) { const kg = hk < 5 ? 5 : 2.5; this.feeder += kg * 1e6; G(`hefted the hive — it's light (~${hk.toFixed(0)} kg of honey left). Put ${kg} kg of fondant over the cluster.`); }
+        else { this.feeder += 5e6; G(`hefted the hive — stores are low (~${hk.toFixed(0)} kg). Gave 5 kg of 1:1 syrup to tide them over to the first flows.`); }
+      }
+    };
+    if (!season) { heft(doy >= 40 ? 7 : 14); return; }   // weekly from February, when brood rearing eats into stores
+    if (this.day < (this.keeperNext || 0)) return;
+    if (this.Tout < 16 || this.raining || this.wx.rain && this.wx.rs < 15) { heft(7); this.keeperNext = this.day + 1; return; }   // too cold or wet to open it: heft it instead, try again tomorrow
+    this.keeperNext = this.day + season;
+    const notes = [], Q = this.queen;
+    // 1 · queen problems
+    const liveCells = this.queenCells.filter(x => { const s = this.qcState(x); return s !== 'killed' && s !== 'emerged' && s !== 'cup'; });
+    if ((!Q.present && !liveCells.length && !this.virgins.length && this.queenlessH > 24 * 10) || this.layingWorkers) {
+      this.introduceQueen(); notes.push(this.layingWorkers ? 'found laying workers — introduced a mated queen' : 'found the colony queenless with no queen cells — introduced a mated queen');
+    }
+    // 2 · swarm control (Apr–mid July): knock down charged swarm cells; if they are back next visit, split the colony
+    if (doy < 200 && Q.present && Q.mated && !Q.virgin) {
+      const charged = this.queenCells.filter(x => x.kind === 'swarm' && x.age >= 0 && x.state !== 'killed' && x.state !== 'emerged');
+      if (charged.length) {
+        if (this.keeperSwarmSeen && this.day - this.keeperSwarmSeen <= 21) this.splitColony(charged, notes);
+        else {
+          for (let m = this.queenCells.length - 1; m >= 0; m--) if (this.queenCells[m].kind === 'swarm') this.removeQC(m);
+          this.swarmPrep = false; this.keeperSwarmSeen = this.day;
+          notes.push(`found ${charged.length} swarm cell${charged.length > 1 ? 's' : ''} with eggs or larvae — knocked them all down`);
+          if (this.nBoxes < MAXBOX) { this.addSuper(); notes.push('added a super to give them more room'); }
+        }
+      }
+    }
+    // spring: put the queen excluder back under the supers
+    if (doy < 150 && this.nBoxes > 2 && !this.excluder) { this.excluder = true; this.keeperLeftSuper = false; notes.push('put the queen excluder back under the supers'); }
+    // spring: a colony building up can run short before the main flow — give it a feed if it's light
+    if (doy < 140) { const hk = honeyKg(); if (hk < 8 && this.feeder < 1e6) { this.feeder += 5e6; notes.push(`stores are low (~${hk.toFixed(0)} kg) — fed 5 kg of 1:1 syrup`); } }
+    // 3 · room: add a super when the top box is ~70 % full of stores (or they're out of storage space)
+    if (doy >= 95 && doy < 215 && this.nBoxes < MAXBOX && this.nWorkers > 10000) {
+      const top = this.boxStores(this.nBoxes - 1), broodTop = this.nBoxes === 2;
+      if (this.storageFull || (!broodTop && top.fill > 0.7 && top.drawn > 0.6) || (broodTop && doy >= 100)) { this.addSuper(); notes.push('added a super (they were running out of room)'); }
+    }
+    // 4 · harvest (mid-July to early Sept): take off capped honey from supers that are mostly capped; extract and
+    // return the wet comb. Brood boxes are never touched.
+    const broodStores = () => this.boxStores(0).honey + this.boxStores(1).honey;
+    if (doy >= 195 && doy < 255 && this.nBoxes > 2 && (doy < 215 || broodStores() >= 12)) {
+      let got = 0;
+      for (let b = 2; b < this.nBoxes; b++) { const S = this.boxStores(b);
+        if (S.honey > 4 && S.honey / Math.max(0.1, S.honey + S.nectar) > 0.8) {
+          for (let i = b * 20 * CPS; i < (b + 1) * 20 * CPS; i++) if (this.st[i] === ST.HONEY) { this.st[i] = ST.EMPTY; this.sugar[i] = 0; this.water[i] = 0; }
+          got += S.honey; } }
+      if (got > 0) { this.totalHarvest = (this.totalHarvest || 0) + got * 1e6; notes.push(`extracted ${got.toFixed(1)} kg of capped honey from the supers and put the wet combs back`); }
+    }
+    // 5 · autumn: take the supers off so they winter in the two brood boxes, then feed up to ~22 kg of stores
+    if (doy >= 255 && this.nBoxes > (this.keeperLeftSuper ? 3 : 2)) {
+      // the honey in the supers is his crop; any shortfall in the brood boxes is made up with sugar syrup (below)
+      // if the brood boxes are light he leaves the lowest super of honey on as winter stores, and takes the queen
+      // excluder out so the cluster can move up into it (a cluster can't follow its stores through an excluder)
+      const keepOne = broodStores() < 15 && this.boxStores(2).honey > 6;
+      const h0 = this.totalHarvest || 0; let n = 0;
+      while (this.nBoxes > (keepOne ? 3 : 2)) { this.removeSuper(); n++; }
+      const got = ((this.totalHarvest || 0) - h0) / 1e6;
+      if (keepOne) this.excluder = false;
+      if (n) notes.push(`took off ${n} super${n > 1 ? 's' : ''} for the winter (${got.toFixed(0)} kg of honey extracted)`);
+      if (keepOne && !this.keeperLeftSuper){ notes.push(`left the bottom super of honey on for their winter stores and took the queen excluder out so the cluster can move up into it`); }
+      this.keeperLeftSuper = keepOne;
+    }
+    if (doy >= 235 && doy < 300) {   // weigh up what's actually left in the hive now (after any supers came off)
+      let hk = 0; for (let b = 0; b < this.nBoxes; b++){ const S = this.boxStores(b); hk += S.honey + S.nectar * 0.5; }
+      const want = 22 - hk - this.feeder / 1e6;
+      if (want > 1.5) { const kg = Math.min(12.5, Math.ceil(want / 2.5) * 2.5); this.feeder += kg * 1e6; notes.push(`stores are ~${hk.toFixed(0)} kg — fed ${kg} kg of 2:1 syrup for winter`); } }
+    G(notes.length ? `inspected the hive — ${notes.join('; ')}.` : (doy < 200 ? 'inspected the hive — queen laying, plenty of room, no swarm cells. All well.' : 'checked the hive — all well.'));
+  }
+  // nucleus-method swarm control: the old queen and a share of the bees go into a new hive (they leave this simulation);
+  // this colony keeps the brood and one good queen cell and raises a new queen, so it has nothing left to swarm with
+  splitColony(charged, notes) {
+    const R = this.rand; let moved = 0;
+    for (let i = 0; i < this.nb; i++) if (this.alive[i] && this.btype[i] === 0 && this.fstate[i] !== 1 && R() < 0.22) { this.killBee(i); this.deathsToday--; moved++; }
+    const best = charged.filter(x => this.qcState(x) === 'capped').sort((a, b) => b.age - a.age)[0] || charged.sort((a, b) => b.age - a.age)[0];
+    for (let m = this.queenCells.length - 1; m >= 0; m--) if (this.queenCells[m] !== best) this.removeQC(m);
+    this.queen = { present: false }; this.swarmPrep = false; this.castMode = false; this.keeperSwarmSeen = 0;
+    this.splits = (this.splits || 0) + 1;
+    notes.push(`swarm cells were back, so he did a split: the old queen and ~${moved.toLocaleString()} bees went into a new hive, leaving one good queen cell here to raise a new queen`);
+  }
+
 
   // ---- what a hive scale would read (kg): woodenware + wax comb + bees + brood + stores
   hiveWeight() {
@@ -2952,6 +3053,7 @@ function updateEntInfo(){
 // ======================================================= stats
 function bar(label, v, max, col, sub){ return `<div class="bar"><span>${label}</span><div><i style="width:${Math.min(100,v/max*100)}%;background:${col}"></i></div><b>${sub??fmt(v)}</b></div>`; }
 function updateStats(){
+  { const h = (hive.totalHarvest||0)/1e6, sp = hive.splits||0; $('keeperInfo').textContent = (h>0||sp>0) ? `Honey harvested so far: ${h.toFixed(1)} kg${sp?` · colonies split off: ${sp}`:''}` : ''; }
   const c=hive.cnt, r=hive.roles, q=hive.queen, L=hive.lastDay||{};
   const honey = c.honeySugar/0.82/1e6, nect=(c.nectarSugar+c.nectarWater)/1e6, pol=c.pollen/1e6;
   const brood = c.eggs+c.larvae+c.dLarvae+c.capped+c.dCapped;
@@ -3059,6 +3161,7 @@ $('bHarvest').onclick=()=>{ hive.harvest(); combDirty=true; updateLog(); };
 $('bFeed').onclick=()=>{ hive.feed(); updateLog(); };
 $('bQueen').onclick=()=>{ hive.introduceQueen(); updateLog(); };
 $('tSwarm').onchange=e=>{ hive.allowSwarm=e.target.checked; };
+$('tKeeper').onchange=e=>{ hive.keeper=e.target.checked; hive.keeperNext=0; hive.keeperHeft=0; hive.say(e.target.checked ? 'Graeme the beekeeper is looking after the hive now.' : 'Graeme has stopped visiting — the hive is on its own.', 'keeper'); };
 $('tRole').onchange=e=>{ colorRoles=e.target.checked; updateRoleLegend(); };
 $('bNew').onclick=()=>newColony(+$('startSel').value);
 function refreshCounts(){ /* comb redraw shows result; counts refresh on next hour */ }
@@ -3093,12 +3196,12 @@ function frame(now){
 function newColony(startDoy){
   window._loading = true; $('loading').style.display='flex';
   const target = startDoy, seed = (Math.random()*1e9)|0;
-  hive = new Hive({ seed, startDoy: 59, allowSwarm: $('tSwarm').checked });
+  hive = new Hive({ seed, startDoy: 59, allowSwarm: $('tSwarm').checked }); hive.keeper = $('tKeeper').checked;
   bees.reset(); ENT.bees=[]; ENT.outcasts=[]; ENT.accEv=0; ENT.accU=0; ENT.accD=0; ENT.guards=[]; ENT.fanners=[]; ENT.orient=[]; particles=[]; landKey=''; simAcc=0; window._dca=null; for (const kk in swarmAnim) delete swarmAnim[kk];
   const days = target-59;
   const step = () => {
     const t0=performance.now();
-    while (hive.doy < target && performance.now()-t0 < 60){ if (hive.doy >= 100 && hive.nBoxes < 3) hive.addSuper(); hive.tick(1/6); }
+    while (hive.doy < target && performance.now()-t0 < 60){ if (!hive.keeper && hive.doy >= 100 && hive.nBoxes < 3) hive.addSuper(); hive.tick(1/6); }
     $('loadBar').style.width = (days>0 ? Math.min(100,(hive.doy-59)/days*100) : 100)+'%';
     $('loadMsg').textContent = days>0 ? `Simulating the colony from Mar 1 to ${doyToDate(target)}… (${doyToDate(hive.doy)})` : 'Preparing colony…';
     if (hive.doy < target && days>0) { setTimeout(step, 0); return; }
