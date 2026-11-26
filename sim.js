@@ -227,7 +227,7 @@ class Hive {
     this.queenlessH = 0; this.layingWorkers = false; this.swarmPrep = false; this.swarmEvent = null;
     this.broodOnset = true; this.winterDrive = 0.4;                      // started in late winter
     // buffers & counters
-    this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
+    this.inSugar = 0; this.inWater = 0; this.feeder = 0; this.feederConc = 0.67; this.fondant = 0; this.feederUptake = 0; this.waterStore = 0; this.fuelSugar = 0; this.eggAcc = 0;
     this.idleDays = 0; this.evictN = 0; this.undertakeN = 0; this.deadOnFloor = 0; this.deadOutside = 0; this.dumpN = 0; this.flyOffN = 0; this.corpseRate = { under: 0, dump: 0, fly: 0 }; this._corpse0 = [0, 0, 0]; this.landN = 0; this.departN = 0; this.landRate = 0; this.departRate = 0; this.onset = 21; this.danceThr = 0.12; this.unloadDelay = 1; this.landingsH = 0; this.storageFull = false;
     this.pollenNeed = 0.5; this.waterNeedF = 0; this.evapFrac = 0.05;
     this.day = Math.floor(this.t / 24); this.anom = 0;
@@ -614,7 +614,17 @@ class Hive {
     }
 
     // ---------- 5. receiving & storing incoming food
-    if (this.feeder > 0) { const m = Math.min(this.feeder, 1.2e6); this.feeder -= m; this.inSugar += m * .67; this.inWater += m * .33; }
+    // syrup in the hive-top feeder: bees come up from the brood nest and carry it down like nectar, but only when it's
+    // warm enough for them to leave the cluster (they ignore it below ~8–10 °C); a strong colony can take 3–5 kg a day
+    this.feederUptake = 0;
+    if (this.feeder > 0) {
+      const colony = Math.min(1.5, this.nWorkers / 25000), warm = clamp((this.Tout - 8) / 7, 0, 1) * (this.isDay ? 1 : 0.6);
+      const m = Math.min(this.feeder, 0.2e6 * colony * warm);
+      if (m > 0) { this.feeder -= m; this.inSugar += m * this.feederConc; this.inWater += m * (1 - this.feederConc); this.feederUptake = m; }
+      if (this.feeder <= 0 && !this.feederEmptyMsg){ this.feederEmptyMsg = true; this.feederEmptyT = this.t; this.say('The feeder is empty — the bees have taken all the syrup down into the combs.', 'info'); }
+    }
+    // fondant sits directly on the top bars over the cluster: they nibble at it even in the cold
+    if (this.fondant > 0) { const m = Math.min(this.fondant, 0.008e6 * Math.min(1.5, this.nWorkers / 20000)); this.fondant -= m; this.inSugar += m; }
     const unloadCap = (storers + 0.3 * guards + 0.15 * foragers) * 10 + 1;
     this.unloadDelay = 1 + 25 * clamp(this.landingsH / unloadCap - 0.7, 0, 1);   // long waits → tremble dance
     this.landingsH = 0;
@@ -1255,9 +1265,9 @@ class Hive {
     const heft = (every) => {   // lift the back of the hive to judge its weight, without opening it
       if (this.day < (this.keeperHeft || 0)) return; this.keeperHeft = this.day + every;
       const hk = honeyKg();
-      if (hk < 8 && this.feeder < 1e6) {
-        if (this.wx.mean < 10) { const kg = hk < 5 ? 5 : 2.5; this.feeder += kg * 1e6; G(`hefted the hive — it's light (~${hk.toFixed(0)} kg of honey left). Put ${kg} kg of fondant over the cluster.`); }
-        else { this.feeder += 5e6; G(`hefted the hive — stores are low (~${hk.toFixed(0)} kg). Gave 5 kg of 1:1 syrup to tide them over to the first flows.`); }
+      if (hk < 8 && this.feeder + this.fondant < 1e6) {
+        if (this.wx.mean < 10) { const kg = hk < 5 ? 5 : 2.5; this.fondant += kg * 1e6; G(`hefted the hive — it's light (~${hk.toFixed(0)} kg of honey left). Put ${kg} kg of fondant over the cluster.`); }
+        else { this.addSyrup(5, 0.5); G(`hefted the hive — stores are low (~${hk.toFixed(0)} kg). Filled the hive-top feeder with 5 kg of 1:1 syrup to tide them over to the first flows.`); }
       }
     };
     if (!season) { heft(doy >= 40 ? 7 : 14); return; }   // weekly from February, when brood rearing eats into stores
@@ -1286,7 +1296,7 @@ class Hive {
     // spring: put the queen excluder back under the supers
     if (doy < 150 && this.nBoxes > 2 && !this.excluder) { this.excluder = true; this.keeperLeftSuper = false; notes.push('put the queen excluder back under the supers'); }
     // spring: a colony building up can run short before the main flow — give it a feed if it's light
-    if (doy < 140) { const hk = honeyKg(); if (hk < 8 && this.feeder < 1e6) { this.feeder += 5e6; notes.push(`stores are low (~${hk.toFixed(0)} kg) — fed 5 kg of 1:1 syrup`); } }
+    if (doy < 140) { const hk = honeyKg(); if (hk < 8 && this.feeder < 1e6) { this.addSyrup(5, 0.5); notes.push(`stores are low (~${hk.toFixed(0)} kg) — filled the feeder with 5 kg of 1:1 syrup`); } }
     // 3 · room: add a super when the top box is ~70 % full of stores (or they're out of storage space)
     if (doy >= 95 && doy < 215 && this.nBoxes < MAXBOX && this.nWorkers > 10000) {
       const top = this.boxStores(this.nBoxes - 1), broodTop = this.nBoxes === 2;
@@ -1319,8 +1329,8 @@ class Hive {
     }
     if (doy >= 235 && doy < 300) {   // weigh up what's actually left in the hive now (after any supers came off)
       let hk = 0; for (let b = 0; b < this.nBoxes; b++){ const S = this.boxStores(b); hk += S.honey + S.nectar * 0.5; }
-      const want = 22 - hk - this.feeder / 1e6;
-      if (want > 1.5) { const kg = Math.min(12.5, Math.ceil(want / 2.5) * 2.5); this.feeder += kg * 1e6; notes.push(`stores are ~${hk.toFixed(0)} kg — fed ${kg} kg of 2:1 syrup for winter`); } }
+      const want = 22 - hk - this.feeder * this.feederConc / 0.82 / 1e6;
+      if (want > 1.5) { const kg = Math.min(12.5, Math.ceil(want / 2.5) * 2.5); this.addSyrup(kg, 0.67); notes.push(`stores are ~${hk.toFixed(0)} kg — filled the hive-top feeder with ${kg} kg of 2:1 syrup for winter`); } }
     G(notes.length ? `inspected the hive — ${notes.join('; ')}.` : (doy < 200 ? 'inspected the hive — queen laying, plenty of room, no swarm cells. All well.' : 'checked the hive — all well.'));
   }
   // nucleus-method swarm control: the old queen and a share of the bees go into a new hive (they leave this simulation);
@@ -1407,7 +1417,10 @@ class Hive {
     this.totalHarvest = (this.totalHarvest || 0) + got;
     return got;
   }
-  feed() { this.feeder += 5e6; this.say('Beekeeper gave 5 kg of 2:1 sugar syrup.', 'keeper'); }
+  // the hive-top feeder: a shallow box on top of the hive holding a tray of syrup (it holds ~12 kg)
+  get feederOn() { return this.feeder > 0 || this.t - (this.feederEmptyT ?? -1e9) < 72; }   // the empty feeder stays on a few days
+  addSyrup(kg, conc) { const tot = this.feeder + kg * 1e6; this.feederConc = (this.feeder * this.feederConc + kg * 1e6 * conc) / tot; this.feeder = Math.min(tot, 14e6); this.feederEmptyMsg = false; }
+  feed() { this.addSyrup(5, 0.67); this.say('Beekeeper poured 5 kg of 2:1 sugar syrup into the hive-top feeder.', 'keeper'); }
   introduceQueen() {
     if (this.queen.present) return;
     for (let m = this.queenCells.length - 1; m >= 0; m--) this.removeQC(m);
