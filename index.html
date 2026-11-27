@@ -1690,23 +1690,33 @@ function drawFeeder(dt){
   FEED.scale = visitsPerSec > cap ? visitsPerSec/cap : 1;
   FEED.acc = Math.min(4, FEED.acc + shown*dt);
   const fy = sy - 6*mm - BEE_SIDE_H*G.s;   // standing on top of a float
-  while (FEED.acc >= 1 && hive.feeder > 0){ FEED.acc--; const f = fl[Math.min(fl.length-1, (Math.pow(Math.random(), 1.6)*fl.length)|0)], tx = f[0] + Math.random()*(f[1]-f[0]);   // most drink near where they come in
+  while (FEED.acc >= 1 && hive.feeder > 0){ FEED.acc--;
+    const tx = G.panX0 + 4*mm + Math.pow(Math.random(), 1.6)*(G.panX1 - G.panX0 - 8*mm);   // most drink near where they come in
     const hx = G.holeX0 + Math.random()*(G.holeX1-G.holeX0);
-    // up out of the hole, onto the floor, up the outside of the pan, over the rim and down onto the floats
-    const h = BEE_SIDE_H*G.s, floorY = yFloor - h, rimY = G.panTop - h, wallX = G.panX0 - 0.45*G.s, inX = G.panX0 + 6*mm;
-    const legs = [ [hx, floorY, 1], [wallX, floorY, 0], [wallX, rimY, 1], [inX, rimY, 0], [inX, fy, -1], [tx, fy, 0] ];
-    FEED.bees.push({ x: hx, y: yFloor + 8*mm, legs, back: legs.slice(0, -1).reverse().concat([[hx, yFloor + 12*mm, -1]]).map(([x,y,c])=>[x,y,-c]), mode:'up',
+    // up out of the hole, across the floor and up the outside of the pan; over the rim onto the pan's far wall (seen
+    // face-on, like a bee on comb) and down it to the syrup line, where she drinks head-down at the edge
+    const h = BEE_SIDE_H*G.s, floorY = yFloor - h, rimY = G.panTop - h, wallX = G.panX0 - 0.45*G.s, wy = G.panTop + 1.9*G.s;
+    const legs = [ [hx, floorY, 1], [wallX, floorY, 0], [wallX, rimY, 1], [G.panX0 + 2.2*G.s, wy, 0, 1], [tx, -1, 0, 1] ];   // straight across the wall to her spot   // y −1: the syrup line
+    const back = [ [tx, wy - 0.6*G.s*Math.random(), 0, 1], [G.panX0 + 2.2*G.s, wy, 0, 1], [wallX, rimY, 0], [wallX, floorY, -1], [hx, floorY, 0], [hx, yFloor + 12*mm, -1] ];
+    FEED.bees.push({ x: hx, y: yFloor + 8*mm, legs, back, mode:'up',
       drink: Math.max(0.8, 45/Math.max(1, sp)) * (0.7+Math.random()*0.6), seed:(Math.random()*1e6)|0 }); }
   const walk = 25*mm;   // ~2.5 cm a second
   for (const b of FEED.bees){
-    if (b.mode==='drink'){ b.t -= dt; b.y = syrupY(G) - 6*mm - BEE_SIDE_H*G.s; if (b.t <= 0){ b.mode='down'; b.legs = b.back; } continue; }
-    const L = b.legs[0]; if (!L){ if (b.mode==='up'){ b.mode='drink'; b.t=b.drink; b.dir = Math.random()<0.5?1:-1; } else b.gone = true; continue; }
-    const dx = L[0]-b.x, dy = L[1]-b.y, d = Math.hypot(dx,dy), v = walk*(b.mode==='down'?1.2:1)*dt;
-    b.climb = L[2]; if (Math.abs(dx) > 0.5) b.dir = dx > 0 ? 1 : -1;
-    if (d <= v){ b.x = L[0]; b.y = L[1]; b.legs.shift(); } else { b.x += dx/d*v; b.y += dy/d*v; }
+    const drinkY = syrupY(G) - 1.7*G.s;   // body above the syrup line, head and tongue at the surface
+    if (b.mode==='drink'){ b.t -= dt; b.y = drinkY; b.a = Math.PI/2 + Math.sin(performance.now()/700 + b.seed)*0.12; if (b.t <= 0){ b.mode='down'; b.legs = b.back; } continue; }
+    const L = b.legs[0]; if (!L){ if (b.mode==='up'){ b.mode='drink'; b.t=b.drink; } else b.gone = true; continue; }
+    const ly = L[1] < 0 ? drinkY : L[1];
+    const dx = L[0]-b.x, dy = ly-b.y, d = Math.hypot(dx,dy), v = walk*(b.mode==='down'?1.2:1)*dt;
+    b.climb = L[2]; b.top = !!L[3]; if (Math.abs(dx) > 0.5) b.dir = dx > 0 ? 1 : -1;
+    if (d > 0.5) b.a = Math.atan2(dy, dx);
+    if (d <= v){ b.x = L[0]; b.y = ly; b.legs.shift(); continue; }
+    b.x += dx/d*v; b.y += dy/d*v;
   }
   FEED.bees = FEED.bees.filter(b=>!b.gone);
   for (const b of FEED.bees){ const drinking = b.mode==='drink';
+    if (b.top || drinking){ drawBee(g, b.x, b.y, b.a, G.s, 'w', { seed:b.seed, foreshort: drinking });
+      if (drinking && G.s > 3){ g.strokeStyle='#3a2510'; g.lineWidth=Math.max(1,G.s*0.1); g.beginPath(); const tx = b.x + Math.cos(b.a)*1.45*G.s, ty = b.y + Math.sin(b.a)*1.45*G.s; g.moveTo(tx, ty); g.lineTo(tx, ty + (0.35 + 0.12*Math.sin(performance.now()/120 + b.seed))*G.s); g.stroke(); }   // tongue in the syrup
+      continue; }
     drawBeeSide(g, b.x, b.y, b.dir||1, G.s, 'w', { tilt: b.climb ? (b.climb>0?-1.25:1.25)*(b.dir||1) : drinking ? 0.32 : 0, step: drinking ? 0 : performance.now()/1000 + b.seed, seed:b.seed });
     if (drinking && G.s > 3){ g.strokeStyle='#3a2510'; g.lineWidth=Math.max(1,G.s*0.12); g.beginPath(); const hx = b.x + (b.dir||1)*1.3*G.s, hy = b.y + 0.6*G.s; g.moveTo(hx, hy); g.lineTo(hx + (b.dir||1)*0.5*G.s, hy + 1.1*G.s + Math.sin(performance.now()/120 + b.seed)*0.15*G.s); g.stroke(); }   // tongue lapping syrup
   }
